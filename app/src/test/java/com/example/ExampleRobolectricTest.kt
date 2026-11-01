@@ -1,9 +1,11 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.model.AppLanguage
 import com.example.model.DoctorUiState
+import com.example.model.isListening
 import com.example.viewmodel.VoiceDoctorViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,8 +16,13 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class ExampleRobolectricTest {
+
+    private fun createViewModel(): VoiceDoctorViewModel {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        return VoiceDoctorViewModel(app)
+    }
 
     @Test
     fun `read string from context`() {
@@ -26,7 +33,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `test initial state and sound toggle`() {
-        val viewModel = VoiceDoctorViewModel()
+        val viewModel = createViewModel()
         val initial = viewModel.uiState.value
         assertEquals(AppLanguage.ENGLISH, initial.currentLanguage)
         assertTrue(initial.isSoundEnabled)
@@ -39,17 +46,19 @@ class ExampleRobolectricTest {
 
     @Test
     fun `test language toggle updates messages and state`() {
-        val viewModel = VoiceDoctorViewModel()
+        val viewModel = createViewModel()
         viewModel.setLanguage(AppLanguage.TELUGU)
         assertEquals(AppLanguage.TELUGU, viewModel.uiState.value.currentLanguage)
         assertTrue(viewModel.uiState.value.messages.first().text.contains("తలనొప్పి"))
     }
 
     @Test
-    fun `test recording flow state transition`() {
-        val viewModel = VoiceDoctorViewModel()
+    fun `test recording flow state transition in telugu demo mode`() {
+        val viewModel = createViewModel()
+        viewModel.setLanguage(AppLanguage.TELUGU)
         viewModel.startRecording()
         assertTrue(viewModel.uiState.value.uiState is DoctorUiState.RecordingDemo)
+        assertTrue(viewModel.uiState.value.uiState.isListening)
 
         viewModel.cancelRecording()
         assertTrue(viewModel.uiState.value.uiState is DoctorUiState.Idle)
@@ -57,7 +66,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `test clear and restore conversation`() {
-        val viewModel = VoiceDoctorViewModel()
+        val viewModel = createViewModel()
         assertEquals(2, viewModel.uiState.value.messages.size)
 
         // Clear messages to trigger centered doctor layout
