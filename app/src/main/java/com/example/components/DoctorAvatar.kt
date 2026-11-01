@@ -46,6 +46,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.DoctorUiState
+import com.example.model.isListening
+import com.example.model.isSpeaking
+import com.example.model.isProcessing
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import com.example.ui.theme.DoctorAvatarCircleBg
 import com.example.ui.theme.DoctorBlueLight
 import com.example.ui.theme.DoctorBluePrimary
@@ -74,7 +79,7 @@ fun DoctorAvatar(
     val infiniteTransition = rememberInfiniteTransition(label = "avatar_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
-        targetValue = if (uiState is DoctorUiState.RecordingDemo || uiState is DoctorUiState.RespondingDemo) 1.07f else 1.0f,
+        targetValue = if (uiState.isListening || uiState.isSpeaking || uiState.isProcessing) 1.07f else 1.0f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1100, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -93,7 +98,7 @@ fun DoctorAvatar(
                 .testTag("doctor_avatar_container")
         ) {
             // Subtle animated halo backdrop
-            if (uiState is DoctorUiState.RecordingDemo || uiState is DoctorUiState.RespondingDemo) {
+            if (uiState.isListening || uiState.isSpeaking || uiState.isProcessing) {
                 Box(
                     modifier = Modifier
                         .size(animatedSize + 16.dp)
@@ -165,7 +170,7 @@ fun DoctorAvatar(
                         .testTag("doctor_avatar_sound_badge")
                 ) {
                     Icon(
-                        imageVector = if (isSoundEnabled) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                        imageVector = if (isSoundEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                         contentDescription = if (isSoundEnabled) "Sound on" else "Sound muted",
                         tint = if (isSoundEnabled) DoctorBluePrimary else Color.Gray,
                         modifier = Modifier.size(17.dp)

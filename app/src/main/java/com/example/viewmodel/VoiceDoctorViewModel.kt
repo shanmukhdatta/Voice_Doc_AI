@@ -1,12 +1,21 @@
 package com.example.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.pm.PackageManager
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.model.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.DoctorUiState
 import com.example.model.MessageSender
 import com.example.model.VoiceDoctorState
+import com.example.voice.AudioRecorder
+import com.example.voice.SpeechToTextEngine
+import com.example.voice.TextToSpeechManager
+import com.example.voice.WhisperSpeechToTextEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,11 +23,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class VoiceDoctorViewModel : ViewModel() {
+class VoiceDoctorViewModel(
+    application: Application,
+    private val audioRecorder: com.example.voice.VoiceRecorder = AudioRecorder(),
+    private val sttEngine: SpeechToTextEngine = WhisperSpeechToTextEngine(application),
+    private val ttsManager: TextToSpeechManager = TextToSpeechManager(application)
+) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "VoiceDoctorViewModel"
+    }
 
     private val _uiState = MutableStateFlow(
         VoiceDoctorState(
@@ -28,6 +47,7 @@ class VoiceDoctorViewModel : ViewModel() {
     val uiState: StateFlow<VoiceDoctorState> = _uiState.asStateFlow()
 
     private var activeJob: Job? = null
+    private var amplitudeJob: Job? = null
     private var simulatedVoiceIndex = 0
 
     private val englishVoicePrompts = listOf(
@@ -46,36 +66,237 @@ class VoiceDoctorViewModel : ViewModel() {
         "ఎంత విశ్రాంతి తీసుకోవడం మంచిది?"
     )
 
+    init {
+        // Pre-initialize Whisper STT engine asynchronously
+        viewModelScope.launch {
+            sttEngine.initialize().onFailure { error ->
+                Log.e(TAG, "Failed to initialize Whisper engine at startup", error)
+            }
+        }
+
+        // Monitor TTS voice availability
+        viewModelScope.launch {
+            ttsManager.isOfflineVoiceAvailable.collect { available ->
+                _uiState.update { it.copy(isOfflineVoiceAvailable = available) }
+            }
+        }
+    }
+
+    fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            getApplication(),
+            android.Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun startRecording() {
         activeJob?.cancel()
+        ttsManager.stop()
+
+        val isTelugu = _uiState.value.currentLanguage == AppLanguage.TELUGU
+
+        if (isTelugu) {
+            // Telugu Demo Mode
+            _uiState.update {
+                it.copy(
+                    uiState = DoctorUiState.RecordingDemo,
+                    statusMessage = "తెలుగు వాయిస్ రికగ్నిషన్ డెమో మోడ్‌లో ఉంది"
+                )
+            }
+            return
+        }
+
+        // English Live Mode
+        if (!hasRecordAudioPermission()) {
+            _uiState.update {
+                it.copy(
+                    uiState = DoctorUiState.PermissionRequired,
+                    statusMessage = "Microphone permission required for offline speech recognition"
+                )
+            }
+            return
+        }
+
+        val startResult = audioRecorder.startRecording(
+            scope = viewModelScope,
+            onMaxDurationReached = {
+                releaseRecording()
+            }
+        )
+
+        if (startResult.isFailure) {
+            val errorMsg = startResult.exceptionOrNull()?.message ?: "Failed to initialize microphone"
+            Log.e(TAG, "Recording start failure: $errorMsg")
+            _uiState.update {
+                it.copy(
+                    uiState = DoctorUiState.Error(errorMsg),
+                    statusMessage = errorMsg
+                )
+            }
+            return
+        }
+
         _uiState.update {
             it.copy(
-                uiState = DoctorUiState.RecordingDemo,
-                statusMessage = null
+                uiState = DoctorUiState.Recording,
+                statusMessage = null,
+                recordingAmplitude = 0f
             )
+        }
+
+        // Feed microphone amplitude to UI
+        amplitudeJob?.cancel()
+        amplitudeJob = viewModelScope.launch {
+            audioRecorder.amplitude.collect { amp ->
+                _uiState.update { it.copy(recordingAmplitude = amp) }
+            }
         }
     }
 
     fun cancelRecording() {
         activeJob?.cancel()
+        amplitudeJob?.cancel()
+
+        if (_uiState.value.uiState is DoctorUiState.Recording) {
+            audioRecorder.cancelRecording()
+        }
+
         _uiState.update {
-            it.copy(uiState = DoctorUiState.Idle)
+            it.copy(
+                uiState = DoctorUiState.Idle,
+                recordingAmplitude = 0f
+            )
         }
     }
 
     fun releaseRecording() {
-        if (_uiState.value.uiState !is DoctorUiState.RecordingDemo) return
+        amplitudeJob?.cancel()
 
-        val lang = _uiState.value.currentLanguage
-        val userVoiceText = if (lang == AppLanguage.TELUGU) {
-            val list = teluguVoicePrompts
-            list[simulatedVoiceIndex % list.size].also { simulatedVoiceIndex++ }
-        } else {
-            val list = englishVoicePrompts
-            list[simulatedVoiceIndex % list.size].also { simulatedVoiceIndex++ }
+        val currentState = _uiState.value.uiState
+        if (currentState !is DoctorUiState.Recording && currentState !is DoctorUiState.RecordingDemo) {
+            return
         }
 
-        processUserMessage(userVoiceText)
+        val lang = _uiState.value.currentLanguage
+
+        if (lang == AppLanguage.TELUGU) {
+            // Telugu Demo Mode: simulated response
+            val list = teluguVoicePrompts
+            val userVoiceText = list[simulatedVoiceIndex % list.size].also { simulatedVoiceIndex++ }
+            processDemoMessage(userVoiceText, AppLanguage.TELUGU)
+            return
+        }
+
+        // English Live Pipeline: AudioRecord -> Whisper.cpp -> Recognized Text -> Android TTS
+        val audioSamples = audioRecorder.stopRecording()
+        _uiState.update {
+            it.copy(
+                uiState = DoctorUiState.Transcribing,
+                recordingAmplitude = 0f
+            )
+        }
+
+        // Validate minimum sample count (at least 0.3s of audio = 4800 samples)
+        if (audioSamples.size < 4800) {
+            Log.i(TAG, "Audio too short (${audioSamples.size} samples). Returning to idle.")
+            _uiState.update {
+                it.copy(
+                    uiState = DoctorUiState.Idle,
+                    statusMessage = "Audio too short. Please hold to talk."
+                )
+            }
+            viewModelScope.launch {
+                delay(2000)
+                _uiState.update { it.copy(statusMessage = null) }
+            }
+            return
+        }
+
+        activeJob = viewModelScope.launch(Dispatchers.Default) {
+            // Ensure model is loaded
+            sttEngine.initialize()
+
+            val result = sttEngine.transcribe(audioSamples, "en")
+            result.onSuccess { transcript ->
+                val cleanTranscript = transcript.trim()
+                if (cleanTranscript.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.update {
+                            it.copy(
+                                uiState = DoctorUiState.Idle,
+                                statusMessage = "No speech detected. Please speak clearly."
+                            )
+                        }
+                    }
+                    delay(2000)
+                    withContext(Dispatchers.Main) {
+                        _uiState.update { it.copy(statusMessage = null) }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        handleRecognizedSpeechEcho(cleanTranscript)
+                    }
+                }
+            }.onFailure { error ->
+                Log.e(TAG, "Transcription failed", error)
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(
+                            uiState = DoctorUiState.Idle,
+                            statusMessage = "Transcription error: ${error.localizedMessage ?: "Unknown"}"
+                        )
+                    }
+                }
+                delay(2500)
+                withContext(Dispatchers.Main) {
+                    _uiState.update { it.copy(statusMessage = null) }
+                }
+            }
+        }
+    }
+
+    private fun handleRecognizedSpeechEcho(recognizedText: String) {
+        val currentTime = getCurrentFormattedTime()
+
+        // 1. Display user message with recognized speech
+        val userMessage = ChatMessage(
+            sender = MessageSender.USER,
+            text = recognizedText,
+            time = currentTime,
+            isRead = true
+        )
+
+        // 2. Display doctor echo response
+        val doctorEchoMessage = ChatMessage(
+            sender = MessageSender.DOCTOR,
+            text = recognizedText,
+            time = currentTime,
+            isRead = true
+        )
+
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages + userMessage + doctorEchoMessage,
+                uiState = if (state.isSoundEnabled) DoctorUiState.Speaking else DoctorUiState.Idle
+            )
+        }
+
+        // 3. Android TTS speaks recognized speech offline
+        if (_uiState.value.isSoundEnabled) {
+            ttsManager.speak(
+                text = recognizedText,
+                isSoundEnabled = true,
+                onStart = {
+                    _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
+                },
+                onDone = {
+                    _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+                },
+                onError = {
+                    _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+                }
+            )
+        }
     }
 
     fun onInputTextChanged(text: String) {
@@ -86,7 +307,7 @@ class VoiceDoctorViewModel : ViewModel() {
         val query = _uiState.value.inputText.trim()
         if (query.isEmpty()) return
         _uiState.update { it.copy(inputText = "") }
-        processUserMessage(query)
+        processTextMessage(query)
     }
 
     fun toggleTextMode() {
@@ -94,10 +315,14 @@ class VoiceDoctorViewModel : ViewModel() {
     }
 
     fun toggleSound() {
+        val newSound = !_uiState.value.isSoundEnabled
+        if (!newSound) {
+            ttsManager.stop()
+        }
         _uiState.update {
-            val newSound = !it.isSoundEnabled
             it.copy(
                 isSoundEnabled = newSound,
+                uiState = if (!newSound && it.uiState is DoctorUiState.Speaking) DoctorUiState.Idle else it.uiState,
                 statusMessage = if (newSound) "Sound enabled" else "Sound muted"
             )
         }
@@ -109,11 +334,16 @@ class VoiceDoctorViewModel : ViewModel() {
 
     fun setLanguage(language: AppLanguage) {
         if (_uiState.value.currentLanguage == language) return
+        ttsManager.stop()
         _uiState.update {
             it.copy(
                 currentLanguage = language,
                 messages = getSeedMessages(language),
-                statusMessage = if (language == AppLanguage.TELUGU) "భాష తెలుగులోకి మార్చబడింది" else "Language changed to English"
+                statusMessage = if (language == AppLanguage.TELUGU) {
+                    "భాష తెలుగులోకి మార్చబడింది (డెమో మోడ్)"
+                } else {
+                    "Language set to English (Offline Voice)"
+                }
             )
         }
         viewModelScope.launch {
@@ -136,6 +366,7 @@ class VoiceDoctorViewModel : ViewModel() {
 
     fun clearConversation() {
         activeJob?.cancel()
+        ttsManager.stop()
         _uiState.update {
             it.copy(
                 messages = emptyList(),
@@ -153,6 +384,7 @@ class VoiceDoctorViewModel : ViewModel() {
 
     fun loadSampleConversation() {
         activeJob?.cancel()
+        ttsManager.stop()
         _uiState.update {
             it.copy(
                 messages = getSeedMessages(it.currentLanguage),
@@ -164,14 +396,63 @@ class VoiceDoctorViewModel : ViewModel() {
 
     fun selectQuickPrompt(prompt: String) {
         _uiState.update { it.copy(showQuickPrompts = false) }
-        processUserMessage(prompt)
+        processTextMessage(prompt)
     }
 
-    private fun processUserMessage(userText: String) {
+    private fun processTextMessage(userText: String) {
         activeJob?.cancel()
         val currentTime = getCurrentFormattedTime()
 
-        // Add user message immediately
+        val userMessage = ChatMessage(
+            sender = MessageSender.USER,
+            text = userText,
+            time = currentTime,
+            isRead = true
+        )
+
+        _uiState.update { state ->
+            state.copy(
+                messages = state.messages + userMessage,
+                uiState = DoctorUiState.Transcribing
+            )
+        }
+
+        activeJob = viewModelScope.launch {
+            delay(400)
+            val lang = _uiState.value.currentLanguage
+            val responseText = generateDoctorResponse(userText, lang)
+            val doctorReply = ChatMessage(
+                sender = MessageSender.DOCTOR,
+                text = responseText,
+                time = getCurrentFormattedTime(),
+                isRead = true
+            )
+
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages + doctorReply,
+                    uiState = if (state.isSoundEnabled) DoctorUiState.Speaking else DoctorUiState.Idle
+                )
+            }
+
+            if (_uiState.value.isSoundEnabled && lang == AppLanguage.ENGLISH) {
+                ttsManager.speak(
+                    text = responseText,
+                    isSoundEnabled = true,
+                    onDone = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } },
+                    onError = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } }
+                )
+            } else {
+                delay(1200)
+                _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+            }
+        }
+    }
+
+    private fun processDemoMessage(userText: String, language: AppLanguage) {
+        activeJob?.cancel()
+        val currentTime = getCurrentFormattedTime()
+
         val userMessage = ChatMessage(
             sender = MessageSender.USER,
             text = userText,
@@ -187,11 +468,8 @@ class VoiceDoctorViewModel : ViewModel() {
         }
 
         activeJob = viewModelScope.launch {
-            // Simulated medical processing delay
-            delay(850)
-
-            val lang = _uiState.value.currentLanguage
-            val responseText = generateDoctorResponse(userText, lang)
+            delay(750)
+            val responseText = generateDoctorResponse(userText, language)
             val doctorReply = ChatMessage(
                 sender = MessageSender.DOCTOR,
                 text = responseText,
@@ -206,7 +484,6 @@ class VoiceDoctorViewModel : ViewModel() {
                 )
             }
 
-            // Responding display duration
             delay(1400)
             _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
         }
@@ -277,5 +554,12 @@ class VoiceDoctorViewModel : ViewModel() {
                 )
             )
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        audioRecorder.release()
+        sttEngine.release()
+        ttsManager.shutdown()
     }
 }

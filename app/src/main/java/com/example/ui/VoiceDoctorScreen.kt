@@ -1,6 +1,11 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.model.isListening
+import com.example.model.isProcessing
+import com.example.model.isSpeaking
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -63,7 +68,14 @@ fun VoiceDoctorScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val isRecording = state.uiState is DoctorUiState.RecordingDemo
+    val isRecording = state.uiState.isListening
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.startRecording()
+        }
+    }
 
     // Handle Android system back button
     BackHandler(enabled = state.isConversationExpanded || isRecording || state.isTextMode) {
@@ -214,7 +226,7 @@ fun VoiceDoctorScreen(
 
                     // Processing / Responding subtle badge
                     androidx.compose.animation.AnimatedVisibility(
-                        visible = state.uiState is DoctorUiState.ProcessingDemo,
+                        visible = state.uiState.isProcessing,
                         enter = fadeIn(tween(200)),
                         exit = fadeOut(tween(200)),
                         modifier = Modifier
@@ -233,7 +245,13 @@ fun VoiceDoctorScreen(
                     onInputTextChanged = { viewModel.onInputTextChanged(it) },
                     onSubmitTextMessage = { viewModel.submitTextMessage() },
                     onToggleTextMode = { viewModel.toggleTextMode() },
-                    onHoldToTalkStart = { viewModel.startRecording() },
+                    onHoldToTalkStart = {
+                        if (state.currentLanguage == AppLanguage.ENGLISH && !viewModel.hasRecordAudioPermission()) {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            viewModel.startRecording()
+                        }
+                    },
                     onHoldToTalkRelease = { viewModel.releaseRecording() },
                     onHoldToTalkCancel = { viewModel.cancelRecording() }
                 )
@@ -274,8 +292,8 @@ private fun GreetingSection(
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
     ) {
-        when (uiState) {
-            is DoctorUiState.RecordingDemo -> {
+        when {
+            uiState.isListening -> {
                 Text(
                     text = stringResource(id = R.string.listening_title),
                     color = DoctorTextPrimary,

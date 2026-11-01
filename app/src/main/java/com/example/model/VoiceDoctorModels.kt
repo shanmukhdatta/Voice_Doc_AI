@@ -22,10 +22,26 @@ data class ChatMessage(
 
 sealed interface DoctorUiState {
     data object Idle : DoctorUiState
+    data object Recording : DoctorUiState
+    data object Transcribing : DoctorUiState
+    data object Speaking : DoctorUiState
+    data class Error(val message: String) : DoctorUiState
+    data object PermissionRequired : DoctorUiState
+
+    // Retained for Telugu demo mode
     data object RecordingDemo : DoctorUiState
     data object ProcessingDemo : DoctorUiState
     data object RespondingDemo : DoctorUiState
 }
+
+val DoctorUiState.isListening: Boolean
+    get() = this is DoctorUiState.Recording || this is DoctorUiState.RecordingDemo
+
+val DoctorUiState.isProcessing: Boolean
+    get() = this is DoctorUiState.Transcribing || this is DoctorUiState.ProcessingDemo
+
+val DoctorUiState.isSpeaking: Boolean
+    get() = this is DoctorUiState.Speaking || this is DoctorUiState.RespondingDemo
 
 data class VoiceDoctorState(
     val messages: List<ChatMessage> = emptyList(),
@@ -37,5 +53,7 @@ data class VoiceDoctorState(
     val inputText: String = "",
     val showQuickPrompts: Boolean = false,
     val showInfoDialog: Boolean = false,
-    val statusMessage: String? = null
+    val statusMessage: String? = null,
+    val recordingAmplitude: Float = 0f,
+    val isOfflineVoiceAvailable: Boolean = true
 )
