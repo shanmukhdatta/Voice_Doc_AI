@@ -31,7 +31,14 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags += "-std=c++17"
-        arguments += listOf("-DANDROID_STL=c++_shared")
+        arguments += listOf(
+          "-DANDROID_STL=c++_shared",
+          "-DLLAMA_BUILD_COMMON=ON",
+          "-DGGML_LLAMAFILE=OFF",
+          "-DLLAMA_BUILD_TESTS=OFF",
+          "-DLLAMA_BUILD_EXAMPLES=OFF",
+          "-DLLAMA_BUILD_SERVER=OFF"
+        )
       }
     }
   }

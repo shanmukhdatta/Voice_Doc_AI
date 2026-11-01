@@ -6,15 +6,23 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ConversationRepository
+import com.example.data.VoiceDoctorDatabase
 import com.example.model.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.DoctorUiState
 import com.example.model.MessageSender
 import com.example.model.VoiceDoctorState
+import com.example.modelmanager.IModelRepository
+import com.example.modelmanager.ModelInstallState
+import com.example.modelmanager.ModelRepository
 import com.example.voice.AudioRecorder
 import com.example.voice.SpeechToTextEngine
 import com.example.voice.TextToSpeechManager
 import com.example.voice.WhisperSpeechToTextEngine
+import com.example.voice.llm.LlamaCppEngine
+import com.example.voice.llm.LocalLlmEngine
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,17 +35,27 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class VoiceDoctorViewModel(
     application: Application,
     private val audioRecorder: com.example.voice.VoiceRecorder = AudioRecorder(),
     private val sttEngine: SpeechToTextEngine = WhisperSpeechToTextEngine(application),
-    private val ttsManager: TextToSpeechManager = TextToSpeechManager(application)
+    private val ttsManager: TextToSpeechManager = TextToSpeechManager(application),
+    private val modelRepository: IModelRepository = ModelRepository(application),
+    private val llmEngine: LocalLlmEngine = LlamaCppEngine(),
+    private val conversationRepository: ConversationRepository = ConversationRepository(
+        VoiceDoctorDatabase.getInstance(application).conversationDao(),
+        application
+    ),
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "VoiceDoctorViewModel"
     }
+
+    private var currentConversationId: String = UUID.randomUUID().toString()
 
     private val _uiState = MutableStateFlow(
         VoiceDoctorState(
@@ -49,14 +67,6 @@ class VoiceDoctorViewModel(
     private var activeJob: Job? = null
     private var amplitudeJob: Job? = null
     private var simulatedVoiceIndex = 0
-
-    private val englishVoicePrompts = listOf(
-        "It is mild.",
-        "I feel a bit feverish and tired.",
-        "My throat hurts when swallowing.",
-        "Should I drink more warm fluids?",
-        "How much rest is recommended?"
-    )
 
     private val teluguVoicePrompts = listOf(
         "తేలికపాటి నొప్పి ఉంది.",
@@ -80,6 +90,39 @@ class VoiceDoctorViewModel(
                 _uiState.update { it.copy(isOfflineVoiceAvailable = available) }
             }
         }
+
+        // Monitor LLM model install state and auto-load when installed
+        viewModelScope.launch {
+            modelRepository.installState.collect { installState ->
+                _uiState.update { it.copy(modelInstallState = installState) }
+                if (installState is ModelInstallState.Installed) {
+                    if (!llmEngine.isModelLoaded.value) {
+                        Log.i(TAG, "Model installed; loading into llama.cpp engine...")
+                        llmEngine.loadModel(installState.path).onFailure { error ->
+                            Log.e(TAG, "Failed to load llama model", error)
+                        }
+                    }
+                } else if (installState is ModelInstallState.NotInstalled) {
+                    if (llmEngine.isModelLoaded.value) {
+                        llmEngine.unloadModel()
+                    }
+                }
+            }
+        }
+
+        // Monitor history opt-in state
+        viewModelScope.launch {
+            conversationRepository.isHistoryEnabled.collect { enabled ->
+                _uiState.update { it.copy(isHistoryEnabled = enabled) }
+            }
+        }
+
+        // Monitor saved conversations
+        viewModelScope.launch {
+            conversationRepository.getAllConversations().collect { convs ->
+                _uiState.update { it.copy(savedConversations = convs) }
+            }
+        }
     }
 
     fun hasRecordAudioPermission(): Boolean {
@@ -89,6 +132,88 @@ class VoiceDoctorViewModel(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    // --- Model Management Actions ---
+
+    fun setModelDownloadDialog(show: Boolean) {
+        _uiState.update { it.copy(showModelDownloadDialog = show) }
+    }
+
+    fun startModelDownload() {
+        modelRepository.startDownload()
+    }
+
+    fun cancelModelDownload() {
+        modelRepository.cancelDownload()
+    }
+
+    fun deleteInstalledModel() {
+        viewModelScope.launch {
+            llmEngine.unloadModel()
+            modelRepository.removeInstalledModel()
+            _uiState.update {
+                it.copy(
+                    statusMessage = "AI model removed from device"
+                )
+            }
+            delay(2000)
+            _uiState.update { it.copy(statusMessage = null) }
+        }
+    }
+
+    // --- History Actions ---
+
+    fun toggleHistoryOptIn(enabled: Boolean) {
+        conversationRepository.setHistoryEnabled(enabled)
+    }
+
+    fun setHistorySheet(show: Boolean) {
+        _uiState.update { it.copy(showHistorySheet = show) }
+    }
+
+    fun loadSavedConversation(conversationId: String) {
+        viewModelScope.launch {
+            val entities = conversationRepository.getMessagesList(conversationId)
+            if (entities.isNotEmpty()) {
+                currentConversationId = conversationId
+                val loadedMessages = entities.map { entity ->
+                    ChatMessage(
+                        id = entity.id,
+                        sender = if (entity.role == "USER") MessageSender.USER else MessageSender.DOCTOR,
+                        text = entity.content,
+                        time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(entity.createdAt)),
+                        isRead = true,
+                        isVoice = entity.source == "VOICE",
+                        timestamp = entity.createdAt
+                    )
+                }
+                _uiState.update {
+                    it.copy(
+                        messages = loadedMessages,
+                        showHistorySheet = false,
+                        isConversationExpanded = true,
+                        statusMessage = "Loaded saved conversation"
+                    )
+                }
+                delay(1500)
+                _uiState.update { it.copy(statusMessage = null) }
+            }
+        }
+    }
+
+    fun deleteSavedConversation(conversationId: String) {
+        viewModelScope.launch {
+            conversationRepository.deleteConversation(conversationId)
+        }
+    }
+
+    fun clearAllSavedConversations() {
+        viewModelScope.launch {
+            conversationRepository.clearAllHistory()
+        }
+    }
+
+    // --- Recording Actions ---
+
     fun startRecording() {
         activeJob?.cancel()
         ttsManager.stop()
@@ -96,7 +221,6 @@ class VoiceDoctorViewModel(
         val isTelugu = _uiState.value.currentLanguage == AppLanguage.TELUGU
 
         if (isTelugu) {
-            // Telugu Demo Mode
             _uiState.update {
                 it.copy(
                     uiState = DoctorUiState.RecordingDemo,
@@ -106,7 +230,6 @@ class VoiceDoctorViewModel(
             return
         }
 
-        // English Live Mode
         if (!hasRecordAudioPermission()) {
             _uiState.update {
                 it.copy(
@@ -144,7 +267,6 @@ class VoiceDoctorViewModel(
             )
         }
 
-        // Feed microphone amplitude to UI
         amplitudeJob?.cancel()
         amplitudeJob = viewModelScope.launch {
             audioRecorder.amplitude.collect { amp ->
@@ -180,14 +302,12 @@ class VoiceDoctorViewModel(
         val lang = _uiState.value.currentLanguage
 
         if (lang == AppLanguage.TELUGU) {
-            // Telugu Demo Mode: simulated response
             val list = teluguVoicePrompts
             val userVoiceText = list[simulatedVoiceIndex % list.size].also { simulatedVoiceIndex++ }
             processDemoMessage(userVoiceText, AppLanguage.TELUGU)
             return
         }
 
-        // English Live Pipeline: AudioRecord -> Whisper.cpp -> Recognized Text -> Android TTS
         val audioSamples = audioRecorder.stopRecording()
         _uiState.update {
             it.copy(
@@ -196,7 +316,6 @@ class VoiceDoctorViewModel(
             )
         }
 
-        // Validate minimum sample count (at least 0.3s of audio = 4800 samples)
         if (audioSamples.size < 4800) {
             Log.i(TAG, "Audio too short (${audioSamples.size} samples). Returning to idle.")
             _uiState.update {
@@ -212,8 +331,7 @@ class VoiceDoctorViewModel(
             return
         }
 
-        activeJob = viewModelScope.launch(Dispatchers.Default) {
-            // Ensure model is loaded
+        activeJob = viewModelScope.launch(defaultDispatcher) {
             sttEngine.initialize()
 
             val result = sttEngine.transcribe(audioSamples, "en")
@@ -234,7 +352,7 @@ class VoiceDoctorViewModel(
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        handleRecognizedSpeechEcho(cleanTranscript)
+                        processLiveEnglishExchange(cleanTranscript, isVoice = true)
                     }
                 }
             }.onFailure { error ->
@@ -255,47 +373,116 @@ class VoiceDoctorViewModel(
         }
     }
 
-    private fun handleRecognizedSpeechEcho(recognizedText: String) {
-        val currentTime = getCurrentFormattedTime()
+    // --- Exchange Processing ---
 
-        // 1. Display user message with recognized speech
+    private fun processLiveEnglishExchange(userPrompt: String, isVoice: Boolean) {
+        val currentTime = getCurrentFormattedTime()
         val userMessage = ChatMessage(
             sender = MessageSender.USER,
-            text = recognizedText,
+            text = userPrompt,
             time = currentTime,
-            isRead = true
+            isRead = true,
+            isVoice = isVoice
         )
 
-        // 2. Display doctor echo response
-        val doctorEchoMessage = ChatMessage(
+        // Check model installation status
+        val installState = _uiState.value.modelInstallState
+        if (installState !is ModelInstallState.Installed) {
+            val doctorNotice = ChatMessage(
+                sender = MessageSender.DOCTOR,
+                text = "The on-device AI model is not installed yet. Please tap 'Download AI Model' to download it (~484 MB) for offline guidance.",
+                time = currentTime,
+                isRead = true,
+                isVoice = false
+            )
+
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages + userMessage + doctorNotice,
+                    uiState = DoctorUiState.Idle,
+                    showModelDownloadDialog = true
+                )
+            }
+            return
+        }
+
+        val doctorMsgId = UUID.randomUUID().toString()
+        val initialDoctorMessage = ChatMessage(
+            id = doctorMsgId,
             sender = MessageSender.DOCTOR,
-            text = recognizedText,
+            text = "",
             time = currentTime,
-            isRead = true
+            isRead = true,
+            isVoice = isVoice
         )
 
         _uiState.update { state ->
             state.copy(
-                messages = state.messages + userMessage + doctorEchoMessage,
-                uiState = if (state.isSoundEnabled) DoctorUiState.Speaking else DoctorUiState.Idle
+                messages = state.messages + userMessage + initialDoctorMessage,
+                uiState = DoctorUiState.Thinking
             )
         }
 
-        // 3. Android TTS speaks recognized speech offline
-        if (_uiState.value.isSoundEnabled) {
-            ttsManager.speak(
-                text = recognizedText,
-                isSoundEnabled = true,
-                onStart = {
-                    _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
-                },
-                onDone = {
-                    _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
-                },
-                onError = {
-                    _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+        activeJob = viewModelScope.launch {
+            val accumulatedText = StringBuilder()
+
+            llmEngine.generate(userPrompt).collect { token ->
+                accumulatedText.append(token)
+                val currentText = accumulatedText.toString()
+
+                _uiState.update { state ->
+                    val updatedMessages = state.messages.map { msg ->
+                        if (msg.id == doctorMsgId) {
+                            msg.copy(text = currentText)
+                        } else {
+                            msg
+                        }
+                    }
+                    state.copy(messages = updatedMessages)
                 }
-            )
+            }
+
+            val finalText = accumulatedText.toString().trim().ifEmpty {
+                "I am here to help. Could you please describe your symptoms in more detail?"
+            }
+
+            // Update doctor message with final text
+            val completedDoctorMsg = initialDoctorMessage.copy(text = finalText)
+            _uiState.update { state ->
+                val updatedMessages = state.messages.map { msg ->
+                    if (msg.id == doctorMsgId) completedDoctorMsg else msg
+                }
+                state.copy(messages = updatedMessages)
+            }
+
+            // Save conversation to Room if history is enabled
+            if (conversationRepository.isHistoryEnabled.value) {
+                conversationRepository.saveConversation(
+                    conversationId = currentConversationId,
+                    title = userPrompt.take(50),
+                    messages = listOf(userMessage, completedDoctorMsg)
+                )
+            }
+
+            // Offline TTS speak if sound is enabled
+            if (_uiState.value.isSoundEnabled) {
+                _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
+                ttsManager.speak(
+                    text = finalText,
+                    isSoundEnabled = true,
+                    onStart = {
+                        _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
+                    },
+                    onDone = {
+                        _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+                    },
+                    onError = {
+                        _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+                    }
+                )
+            } else {
+                _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
+            }
         }
     }
 
@@ -307,7 +494,12 @@ class VoiceDoctorViewModel(
         val query = _uiState.value.inputText.trim()
         if (query.isEmpty()) return
         _uiState.update { it.copy(inputText = "") }
-        processTextMessage(query)
+
+        if (_uiState.value.currentLanguage == AppLanguage.TELUGU) {
+            processDemoMessage(query, AppLanguage.TELUGU)
+        } else {
+            processLiveEnglishExchange(query, isVoice = false)
+        }
     }
 
     fun toggleTextMode() {
@@ -342,7 +534,7 @@ class VoiceDoctorViewModel(
                 statusMessage = if (language == AppLanguage.TELUGU) {
                     "భాష తెలుగులోకి మార్చబడింది (డెమో మోడ్)"
                 } else {
-                    "Language set to English (Offline Voice)"
+                    "Language set to English (Offline LLM)"
                 }
             )
         }
@@ -367,6 +559,7 @@ class VoiceDoctorViewModel(
     fun clearConversation() {
         activeJob?.cancel()
         ttsManager.stop()
+        currentConversationId = UUID.randomUUID().toString()
         _uiState.update {
             it.copy(
                 messages = emptyList(),
@@ -385,6 +578,7 @@ class VoiceDoctorViewModel(
     fun loadSampleConversation() {
         activeJob?.cancel()
         ttsManager.stop()
+        currentConversationId = UUID.randomUUID().toString()
         _uiState.update {
             it.copy(
                 messages = getSeedMessages(it.currentLanguage),
@@ -396,56 +590,10 @@ class VoiceDoctorViewModel(
 
     fun selectQuickPrompt(prompt: String) {
         _uiState.update { it.copy(showQuickPrompts = false) }
-        processTextMessage(prompt)
-    }
-
-    private fun processTextMessage(userText: String) {
-        activeJob?.cancel()
-        val currentTime = getCurrentFormattedTime()
-
-        val userMessage = ChatMessage(
-            sender = MessageSender.USER,
-            text = userText,
-            time = currentTime,
-            isRead = true
-        )
-
-        _uiState.update { state ->
-            state.copy(
-                messages = state.messages + userMessage,
-                uiState = DoctorUiState.Transcribing
-            )
-        }
-
-        activeJob = viewModelScope.launch {
-            delay(400)
-            val lang = _uiState.value.currentLanguage
-            val responseText = generateDoctorResponse(userText, lang)
-            val doctorReply = ChatMessage(
-                sender = MessageSender.DOCTOR,
-                text = responseText,
-                time = getCurrentFormattedTime(),
-                isRead = true
-            )
-
-            _uiState.update { state ->
-                state.copy(
-                    messages = state.messages + doctorReply,
-                    uiState = if (state.isSoundEnabled) DoctorUiState.Speaking else DoctorUiState.Idle
-                )
-            }
-
-            if (_uiState.value.isSoundEnabled && lang == AppLanguage.ENGLISH) {
-                ttsManager.speak(
-                    text = responseText,
-                    isSoundEnabled = true,
-                    onDone = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } },
-                    onError = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } }
-                )
-            } else {
-                delay(1200)
-                _uiState.update { it.copy(uiState = DoctorUiState.Idle) }
-            }
+        if (_uiState.value.currentLanguage == AppLanguage.TELUGU) {
+            processDemoMessage(prompt, AppLanguage.TELUGU)
+        } else {
+            processLiveEnglishExchange(prompt, isVoice = false)
         }
     }
 
@@ -457,7 +605,8 @@ class VoiceDoctorViewModel(
             sender = MessageSender.USER,
             text = userText,
             time = currentTime,
-            isRead = true
+            isRead = true,
+            isVoice = false
         )
 
         _uiState.update { state ->
@@ -469,12 +618,13 @@ class VoiceDoctorViewModel(
 
         activeJob = viewModelScope.launch {
             delay(750)
-            val responseText = generateDoctorResponse(userText, language)
+            val responseText = generateDoctorDemoResponse(userText)
             val doctorReply = ChatMessage(
                 sender = MessageSender.DOCTOR,
                 text = responseText,
                 time = getCurrentFormattedTime(),
-                isRead = true
+                isRead = true,
+                isVoice = false
             )
 
             _uiState.update { state ->
@@ -489,36 +639,19 @@ class VoiceDoctorViewModel(
         }
     }
 
-    private fun generateDoctorResponse(userQuery: String, language: AppLanguage): String {
+    private fun generateDoctorDemoResponse(userQuery: String): String {
         val q = userQuery.lowercase()
-        return if (language == AppLanguage.TELUGU) {
-            when {
-                q.contains("నొప్పి") || q.contains("తేలికపాటి") || q.contains("తలనొప్పి") ->
-                    "విశ్రాంతి తీసుకోండి మరియు తగినంత నీరు త్రాగండి. లక్షణాలు కొనసాగితే వైద్య సలహా తీసుకోండి."
-                q.contains("జ్వరం") ->
-                    "తగినంత విశ్రాంతి తీసుకోండి, ద్రవాహారం ఎక్కువగా తీసుకోండి మరియు ఉష్ణోగ్రతను గమనిస్తూ ఉండండి."
-                q.contains("గొంతు") ->
-                    "గోరువెచ్చని ఉప్పు నీటితో పుక్కిలించడం వల్ల ఉపశమనం లభిస్తుంది. చల్లటి పదార్థాలకు దూరంగా ఉండండి."
-                q.contains("నీరు") || q.contains("పానీయాలు") ->
-                    "అవును, శరీరాన్ని హైడ్రేటెడ్‌గా ఉంచుకోవడానికి రోజంతా క్రమం తప్పకుండా నీరు త్రాగడం చాలా మంచిది."
-                else ->
-                    "మీ సమాచారానికి ధన్యవాదాలు. మీరు తగినంత విశ్రాంతి తీసుకోవడం ముఖ్యం. పరిస్థితి ఇబ్బందిగా అనిపిస్తే వైద్యుడిని సంప్రదించండి."
-            }
-        } else {
-            when {
-                q.contains("mild") || q.contains("headache") || q.contains("pain") ->
-                    "Try to rest and stay hydrated. Seek medical advice if symptoms persist."
-                q.contains("fever") || q.contains("tired") ->
-                    "Ensure adequate hydration and restful sleep. Monitor your body temperature and consult a physician if fever rises."
-                q.contains("throat") || q.contains("cough") ->
-                    "Warm saltwater gargles and herbal teas with honey can soothe irritation. Avoid cold food items."
-                q.contains("water") || q.contains("fluids") || q.contains("drink") ->
-                    "Yes, staying well-hydrated helps your body recover faster. Aim for 8-10 glasses of water daily."
-                q.contains("thank") ->
-                    "You're very welcome! Feel free to ask if you notice any other symptoms. Take good care!"
-                else ->
-                    "Thank you for sharing. For general wellness, maintain good hydration and rest. Please consult a doctor for a medical diagnosis."
-            }
+        return when {
+            q.contains("నొప్పి") || q.contains("తేలికపాటి") || q.contains("తలనొప్పి") ->
+                "విశ్రాంతి తీసుకోండి మరియు తగినంత నీరు త్రాగండి. లక్షణాలు కొనసాగితే వైద్య సలహా తీసుకోండి."
+            q.contains("జ్వరం") ->
+                "తగినంత విశ్రాంతి తీసుకోండి, ద్రవాహారం ఎక్కువగా తీసుకోండి మరియు ఉష్ణోగ్రతను గమనిస్తూ ఉండండి."
+            q.contains("గొంతు") ->
+                "గోరువెచ్చని ఉప్పు నీటితో పుక్కిలించడం వల్ల ఉపశమనం లభిస్తుంది. చల్లటి పదార్థాలకు దూరంగా ఉండండి."
+            q.contains("నీరు") || q.contains("పానీయాలు") ->
+                "అవును, శరీరాన్ని హైడ్రేటెడ్‌గా ఉంచుకోవడానికి రోజంతా క్రమం తప్పకుండా నీరు త్రాగడం చాలా మంచిది."
+            else ->
+                "మీ సమాచారానికి ధన్యవాదాలు. మీరు తగినంత విశ్రాంతి తీసుకోవడం ముఖ్యం. పరిస్థితి ఇబ్బందిగా అనిపిస్తే వైద్యుడిని సంప్రదించండి."
         }
     }
 
@@ -561,5 +694,8 @@ class VoiceDoctorViewModel(
         audioRecorder.release()
         sttEngine.release()
         ttsManager.shutdown()
+        viewModelScope.launch {
+            llmEngine.unloadModel()
+        }
     }
 }

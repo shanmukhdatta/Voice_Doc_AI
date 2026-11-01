@@ -3,16 +3,12 @@ package com.example.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.example.model.isListening
-import com.example.model.isProcessing
-import com.example.model.isSpeaking
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +24,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,16 +47,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.R
 import com.example.components.AboutDoctorDialog
+import com.example.components.ConversationHistorySheet
 import com.example.components.ConversationPreview
 import com.example.components.ConversationSheet
 import com.example.components.DoctorAvatar
 import com.example.components.HeaderBar
+import com.example.components.ModelDownloadDialog
 import com.example.components.RecordingSheet
 import com.example.components.VoiceInputBar
 import com.example.model.AppLanguage
 import com.example.model.DoctorUiState
+import com.example.model.isListening
+import com.example.model.isProcessing
+import com.example.modelmanager.ModelInstallState
 import com.example.ui.theme.DoctorBackground
 import com.example.ui.theme.DoctorBluePrimary
+import com.example.ui.theme.DoctorBlueSoft
 import com.example.ui.theme.DoctorTextPrimary
 import com.example.ui.theme.DoctorTextSecondary
 import com.example.viewmodel.VoiceDoctorViewModel
@@ -78,8 +83,10 @@ fun VoiceDoctorScreen(
     }
 
     // Handle Android system back button
-    BackHandler(enabled = state.isConversationExpanded || isRecording || state.isTextMode) {
+    BackHandler(enabled = state.isConversationExpanded || isRecording || state.isTextMode || state.showHistorySheet || state.showModelDownloadDialog) {
         when {
+            state.showModelDownloadDialog -> viewModel.setModelDownloadDialog(false)
+            state.showHistorySheet -> viewModel.setHistorySheet(false)
             isRecording -> viewModel.cancelRecording()
             state.isConversationExpanded -> viewModel.setConversationExpanded(false)
             state.isTextMode -> viewModel.toggleTextMode()
@@ -112,6 +119,14 @@ fun VoiceDoctorScreen(
                     onSoundToggle = { viewModel.toggleSound() }
                 )
 
+                // Optional model status banner if not installed yet
+                if (state.currentLanguage == AppLanguage.ENGLISH && state.modelInstallState !is ModelInstallState.Installed) {
+                    ModelStatusBanner(
+                        state = state.modelInstallState,
+                        onClick = { viewModel.setModelDownloadDialog(true) }
+                    )
+                }
+
                 // Main Center Stage
                 Box(
                     modifier = Modifier
@@ -120,7 +135,6 @@ fun VoiceDoctorScreen(
                     contentAlignment = Alignment.TopCenter
                 ) {
                     if (isRecording) {
-                        // RECORDING STATE: Clear view with Doctor at top and Waveform card in center/bottom (matches Reference 2)
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -146,7 +160,6 @@ fun VoiceDoctorScreen(
                                 )
                             }
 
-                            // Recording Waveform & Control card (Cancel & Edit buttons)
                             RecordingSheet(
                                 onCancel = { viewModel.cancelRecording() },
                                 onEdit = {
@@ -156,7 +169,6 @@ fun VoiceDoctorScreen(
                             )
                         }
                     } else if (state.messages.isEmpty()) {
-                        // ZERO MESSAGES: Vertically center the doctor and greeting (Kimi reference)
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -184,7 +196,6 @@ fun VoiceDoctorScreen(
                             }
                         }
                     } else {
-                        // MESSAGES EXIST: Move doctor upward, show greeting and 2 recent messages (or expanded sheet)
                         Column(
                             modifier = Modifier.fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -225,19 +236,17 @@ fun VoiceDoctorScreen(
                     }
 
                     // Processing / Responding subtle badge
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = state.uiState.isProcessing,
-                        enter = fadeIn(tween(200)),
-                        exit = fadeOut(tween(200)),
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
-                    ) {
-                        ProcessingIndicator(language = state.currentLanguage)
+                    if (state.uiState.isProcessing) {
+                        ProcessingIndicator(
+                            language = state.currentLanguage,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                        )
                     }
                 }
 
-                // Single Prominent Pill-Shaped Voice Input Bar (Fixed above Android navigation bar)
+                // Voice Input Bar
                 VoiceInputBar(
                     isTextMode = state.isTextMode,
                     isRecording = isRecording,
@@ -257,7 +266,7 @@ fun VoiceDoctorScreen(
                 )
             }
 
-            // Floating feedback toast for sound / language changes
+            // Floating feedback toast
             state.statusMessage?.let { status ->
                 StatusFeedbackBadge(
                     message = status,
@@ -267,16 +276,80 @@ fun VoiceDoctorScreen(
                 )
             }
 
-            // Info / About Modal Dialog with New Chat option
+            // Info Dialog
             if (state.showInfoDialog) {
                 AboutDoctorDialog(
                     language = state.currentLanguage,
                     onDismiss = { viewModel.setInfoDialog(false) },
                     onClearChat = { viewModel.clearConversation() },
-                    onRestoreSample = { viewModel.loadSampleConversation() }
+                    onRestoreSample = { viewModel.loadSampleConversation() },
+                    onOpenModelManager = { viewModel.setModelDownloadDialog(true) },
+                    onOpenHistory = { viewModel.setHistorySheet(true) }
+                )
+            }
+
+            // Model Download Dialog
+            if (state.showModelDownloadDialog) {
+                ModelDownloadDialog(
+                    language = state.currentLanguage,
+                    state = state.modelInstallState,
+                    onDismiss = { viewModel.setModelDownloadDialog(false) },
+                    onStartDownload = { viewModel.startModelDownload() },
+                    onCancelDownload = { viewModel.cancelModelDownload() },
+                    onDeleteModel = { viewModel.deleteInstalledModel() }
+                )
+            }
+
+            // Conversation History Sheet
+            if (state.showHistorySheet) {
+                ConversationHistorySheet(
+                    language = state.currentLanguage,
+                    isHistoryEnabled = state.isHistoryEnabled,
+                    conversations = state.savedConversations,
+                    onDismiss = { viewModel.setHistorySheet(false) },
+                    onToggleHistory = { viewModel.toggleHistoryOptIn(it) },
+                    onSelectConversation = { viewModel.loadSavedConversation(it) },
+                    onDeleteConversation = { viewModel.deleteSavedConversation(it) },
+                    onClearAll = { viewModel.clearAllSavedConversations() }
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ModelStatusBanner(
+    state: ModelInstallState,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(DoctorBlueSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.CloudDownload,
+            contentDescription = null,
+            tint = DoctorBluePrimary,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        val text = when (state) {
+            is ModelInstallState.Downloading -> "Downloading AI Model (${(state.progress * 100).toInt()}%)..."
+            is ModelInstallState.Verifying -> "Verifying AI Model..."
+            is ModelInstallState.Error -> "Model download error. Tap to retry."
+            else -> "Download AI Model (~484 MB) for offline conversation"
+        }
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = DoctorBluePrimary
+        )
     }
 }
 

@@ -13,9 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.AppLanguage
-import com.example.ui.theme.DoctorBlueLight
 import com.example.ui.theme.DoctorBluePrimary
 import com.example.ui.theme.DoctorBlueSoft
 import com.example.ui.theme.DoctorTextPrimary
@@ -44,7 +44,9 @@ fun AboutDoctorDialog(
     language: AppLanguage,
     onDismiss: () -> Unit,
     onClearChat: () -> Unit,
-    onRestoreSample: () -> Unit
+    onRestoreSample: () -> Unit,
+    onOpenModelManager: () -> Unit = {},
+    onOpenHistory: () -> Unit = {}
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -125,11 +127,64 @@ fun AboutDoctorDialog(
                     text = if (language == AppLanguage.TELUGU) "ఇంగ్లీష్ మరియు తెలుగు భాషల మద్దతు" else "Bilingual: English & Telugu UI toggling"
                 )
                 FeatureItem(
-                    text = if (language == AppLanguage.TELUGU) "వాయిస్ హోల్డ్-టు-టాక్ మరియు టైపింగ్ చాట్" else "Hold-to-talk voice recording simulation & text chat"
+                    text = if (language == AppLanguage.TELUGU) "ఆన్-డివైస్ LLM & విస్పర్స్ ASR" else "On-device Whisper STT & llama.cpp LLM"
                 )
                 FeatureItem(
-                    text = if (language == AppLanguage.TELUGU) "విస్తరించదగిన సంభాషణ చరిత్ర" else "Expandable conversation sheet with full message history"
+                    text = if (language == AppLanguage.TELUGU) "విస్తరించదగిన సంభాషణ చరిత్ర" else "Opt-in local SQLite message history"
                 )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Action buttons for Model & History
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            onOpenModelManager()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = DoctorBluePrimary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (language == AppLanguage.TELUGU) "AI మోడల్" else "AI Model",
+                            fontSize = 12.sp,
+                            color = DoctorBluePrimary
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            onOpenHistory()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = DoctorBluePrimary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (language == AppLanguage.TELUGU) "చరిత్ర" else "History",
+                            fontSize = 12.sp,
+                            color = DoctorBluePrimary
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(
                     modifier = Modifier

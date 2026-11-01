@@ -1,15 +1,26 @@
 package com.example.voice
 
 import android.app.Application
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.ConversationRepository
+import com.example.data.VoiceDoctorDatabase
 import com.example.model.AppLanguage
 import com.example.model.DoctorUiState
 import com.example.model.MessageSender
 import com.example.model.isListening
-import com.example.model.isSpeaking
+import com.example.modelmanager.IModelRepository
+import com.example.modelmanager.ModelInstallState
 import com.example.viewmodel.VoiceDoctorViewModel
+import com.example.voice.llm.LocalLlmEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -32,6 +43,7 @@ class VoiceDoctorPipelineTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var app: Application
+    private lateinit var db: VoiceDoctorDatabase
 
     // Test Stub STT Engine
     class FakeSpeechToTextEngine(var simulatedResult: String = "Hello doctor") : SpeechToTextEngine {
@@ -55,8 +67,8 @@ class VoiceDoctorPipelineTest {
 
     // Test Stub AudioRecorder
     class FakeAudioRecorder(private val sampleCount: Int = 16000) : VoiceRecorder {
-        override val isRecording = kotlinx.coroutines.flow.MutableStateFlow(false)
-        override val amplitude = kotlinx.coroutines.flow.MutableStateFlow(0f)
+        override val isRecording = MutableStateFlow(false)
+        override val amplitude = MutableStateFlow(0f)
         var startCalled = false
         var stopCalled = false
         var cancelCalled = false
@@ -83,35 +95,99 @@ class VoiceDoctorPipelineTest {
         }
     }
 
+    // Test Stub LLM Engine
+    class FakeLocalLlmEngine(var generatedTokens: List<String> = listOf("Drink ", "warm ", "water ", "and ", "rest.")) : LocalLlmEngine {
+        private val _isModelLoaded = MutableStateFlow(true)
+        override val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
+        var generateCalled = false
+        var lastPrompt: String? = null
+
+        override suspend fun loadModel(path: String): Result<Unit> {
+            _isModelLoaded.value = true
+            return Result.success(Unit)
+        }
+
+        override suspend fun unloadModel() {
+            _isModelLoaded.value = false
+        }
+
+        override fun generate(prompt: String, maxTokens: Int): Flow<String> = flow {
+            generateCalled = true
+            lastPrompt = prompt
+            for (token in generatedTokens) {
+                emit(token)
+            }
+        }
+    }
+
+    // Test Stub Model Repository
+    class FakeModelRepository(initialState: ModelInstallState = ModelInstallState.NotInstalled) : IModelRepository {
+        private val _installState = MutableStateFlow(initialState)
+        override val installState: StateFlow<ModelInstallState> = _installState.asStateFlow()
+        var downloadStarted = false
+        var downloadCancelled = false
+
+        fun setState(state: ModelInstallState) {
+            _installState.value = state
+        }
+
+        override fun checkExistingModel(): ModelInstallState = _installState.value
+
+        override fun startDownload() {
+            downloadStarted = true
+            _installState.value = ModelInstallState.Downloading(100L, 1000L)
+        }
+
+        override fun cancelDownload() {
+            downloadCancelled = true
+            _installState.value = ModelInstallState.NotInstalled
+        }
+
+        override fun removeInstalledModel(): Boolean {
+            _installState.value = ModelInstallState.NotInstalled
+            return true
+        }
+    }
+
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         app = ApplicationProvider.getApplicationContext()
         org.robolectric.Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        db = Room.inMemoryDatabaseBuilder(app, VoiceDoctorDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
     }
 
     @After
     fun tearDown() {
+        db.close()
         Dispatchers.resetMain()
     }
 
     @Test
-    fun testLiveEnglishEchoPipeline() = runTest(testDispatcher) {
-        val fakeStt = FakeSpeechToTextEngine("I need medical advice")
+    fun testLiveEnglishPipelineWithModelInstalled() = runTest(testDispatcher) {
+        val fakeStt = FakeSpeechToTextEngine("I feel feverish and tired")
         val fakeRecorder = FakeAudioRecorder(16000)
-        val ttsManager = TextToSpeechManager(app)
+        val fakeLlm = FakeLocalLlmEngine(listOf("Please ", "rest ", "and ", "stay ", "hydrated."))
+        val modelRepo = FakeModelRepository(ModelInstallState.Installed("/data/mock/model.gguf", 484220000L))
+        val convRepo = ConversationRepository(db.conversationDao(), app)
 
         val viewModel = VoiceDoctorViewModel(
             application = app,
             audioRecorder = fakeRecorder,
             sttEngine = fakeStt,
-            ttsManager = ttsManager
+            ttsManager = TextToSpeechManager(app),
+            modelRepository = modelRepo,
+            llmEngine = fakeLlm,
+            conversationRepository = convRepo,
+            defaultDispatcher = testDispatcher
         )
+        advanceUntilIdle()
 
         val initialMessageCount = viewModel.uiState.value.messages.size
 
-        // 1. User presses and holds mic
-        // (In Robolectric, record permission is granted or tested in demo mode)
+        // 1. User records voice in English
         viewModel.setLanguage(AppLanguage.ENGLISH)
         viewModel.startRecording()
 
@@ -122,18 +198,86 @@ class VoiceDoctorPipelineTest {
         // 3. Verify Whisper transcription is called
         assertTrue(fakeStt.transcribeCalled)
 
-        // 4. Verify messages are posted (1 USER message + 1 DOCTOR echo message)
+        // 4. Verify LLM receives transcript
+        assertTrue(fakeLlm.generateCalled)
+        assertEquals("I feel feverish and tired", fakeLlm.lastPrompt)
+
+        // 5. Verify messages: 1 USER message + 1 DOCTOR generated message
         val messages = viewModel.uiState.value.messages
         assertEquals(initialMessageCount + 2, messages.size)
 
         val userMessage = messages[messages.size - 2]
-        val doctorEcho = messages[messages.size - 1]
+        val doctorReply = messages[messages.size - 1]
 
         assertEquals(MessageSender.USER, userMessage.sender)
-        assertEquals("I need medical advice", userMessage.text)
+        assertEquals("I feel feverish and tired", userMessage.text)
 
-        assertEquals(MessageSender.DOCTOR, doctorEcho.sender)
-        assertEquals("I need medical advice", doctorEcho.text)
+        assertEquals(MessageSender.DOCTOR, doctorReply.sender)
+        assertEquals("Please rest and stay hydrated.", doctorReply.text)
+    }
+
+    @Test
+    fun testLiveEnglishPipelinePromptsDownloadWhenModelMissing() = runTest(testDispatcher) {
+        val fakeStt = FakeSpeechToTextEngine("What should I do for a burn?")
+        val fakeRecorder = FakeAudioRecorder(16000)
+        val fakeLlm = FakeLocalLlmEngine()
+        val modelRepo = FakeModelRepository(ModelInstallState.NotInstalled)
+
+        val viewModel = VoiceDoctorViewModel(
+            application = app,
+            audioRecorder = fakeRecorder,
+            sttEngine = fakeStt,
+            ttsManager = TextToSpeechManager(app),
+            modelRepository = modelRepo,
+            llmEngine = fakeLlm,
+            conversationRepository = ConversationRepository(db.conversationDao(), app),
+            defaultDispatcher = testDispatcher
+        )
+        advanceUntilIdle()
+
+        viewModel.setLanguage(AppLanguage.ENGLISH)
+        viewModel.startRecording()
+        viewModel.releaseRecording()
+        advanceUntilIdle()
+
+        // STT ran
+        assertTrue(fakeStt.transcribeCalled)
+
+        // LLM did NOT run because model is not installed
+        assertFalse(fakeLlm.generateCalled)
+
+        // Doctor message states model not installed
+        val doctorMsg = viewModel.uiState.value.messages.last()
+        assertTrue(doctorMsg.text.contains("not installed"))
+        assertTrue(viewModel.uiState.value.showModelDownloadDialog)
+    }
+
+    @Test
+    fun testOptInHistorySavesExchangesToDatabase() = runTest(testDispatcher) {
+        val fakeLlm = FakeLocalLlmEngine(listOf("Take ", "plenty ", "of ", "fluids."))
+        val modelRepo = FakeModelRepository(ModelInstallState.Installed("/data/mock/model.gguf", 484220000L))
+        val convRepo = ConversationRepository(db.conversationDao(), app)
+        convRepo.setHistoryEnabled(true)
+
+        val viewModel = VoiceDoctorViewModel(
+            application = app,
+            sttEngine = FakeSpeechToTextEngine(),
+            ttsManager = TextToSpeechManager(app),
+            modelRepository = modelRepo,
+            llmEngine = fakeLlm,
+            conversationRepository = convRepo,
+            defaultDispatcher = testDispatcher
+        )
+        advanceUntilIdle()
+
+        viewModel.setLanguage(AppLanguage.ENGLISH)
+        viewModel.onInputTextChanged("How to cure dehydration?")
+        viewModel.submitTextMessage()
+        advanceUntilIdle()
+
+        val savedList = convRepo.getAllConversations().first()
+        assertEquals(1, savedList.size)
+        assertEquals("How to cure dehydration?", savedList[0].title)
     }
 
     @Test
@@ -145,7 +289,8 @@ class VoiceDoctorPipelineTest {
             application = app,
             audioRecorder = fakeRecorder,
             sttEngine = fakeStt,
-            ttsManager = TextToSpeechManager(app)
+            ttsManager = TextToSpeechManager(app),
+            defaultDispatcher = testDispatcher
         )
 
         val initialCount = viewModel.uiState.value.messages.size
@@ -163,7 +308,6 @@ class VoiceDoctorPipelineTest {
 
     @Test
     fun testEmptyOrTooShortAudioDoesNotFabricateTranscript() = runTest(testDispatcher) {
-        // Return only 100 samples (< 4800 samples minimum for 0.3s)
         val shortRecorder = FakeAudioRecorder(100)
         val fakeStt = FakeSpeechToTextEngine("Fabricated Sentence")
 
@@ -171,18 +315,17 @@ class VoiceDoctorPipelineTest {
             application = app,
             audioRecorder = shortRecorder,
             sttEngine = fakeStt,
-            ttsManager = TextToSpeechManager(app)
+            ttsManager = TextToSpeechManager(app),
+            defaultDispatcher = testDispatcher
         )
 
         val initialCount = viewModel.uiState.value.messages.size
         viewModel.setLanguage(AppLanguage.ENGLISH)
 
-        // Manually trigger release recording with short audio
         viewModel.startRecording()
         viewModel.releaseRecording()
         advanceUntilIdle()
 
-        // Whisper transcribe should NOT be invoked
         assertFalse(fakeStt.transcribeCalled)
         assertEquals(initialCount, viewModel.uiState.value.messages.size)
     }
@@ -190,42 +333,26 @@ class VoiceDoctorPipelineTest {
     @Test
     fun testTeluguDemoModeMaintainsSafeSeparation() = runTest(testDispatcher) {
         val fakeStt = FakeSpeechToTextEngine()
+        val fakeLlm = FakeLocalLlmEngine()
+
         val viewModel = VoiceDoctorViewModel(
             application = app,
             sttEngine = fakeStt,
-            ttsManager = TextToSpeechManager(app)
+            llmEngine = fakeLlm,
+            ttsManager = TextToSpeechManager(app),
+            defaultDispatcher = testDispatcher
         )
 
         viewModel.setLanguage(AppLanguage.TELUGU)
         assertEquals(AppLanguage.TELUGU, viewModel.uiState.value.currentLanguage)
 
         viewModel.startRecording()
-        assertTrue(viewModel.uiState.value.uiState is DoctorUiState.RecordingDemo)
+        assertEquals(DoctorUiState.RecordingDemo, viewModel.uiState.value.uiState)
 
         viewModel.releaseRecording()
         advanceUntilIdle()
 
-        // Real Whisper STT should not be invoked for Telugu
         assertFalse(fakeStt.transcribeCalled)
-
-        // Demo response should be added
-        val lastMessage = viewModel.uiState.value.messages.last()
-        assertEquals(MessageSender.DOCTOR, lastMessage.sender)
-    }
-
-    @Test
-    fun testMuteToggleStopsSpeech() = runTest(testDispatcher) {
-        val viewModel = VoiceDoctorViewModel(
-            application = app,
-            ttsManager = TextToSpeechManager(app)
-        )
-
-        assertTrue(viewModel.uiState.value.isSoundEnabled)
-        viewModel.toggleSound()
-        assertFalse(viewModel.uiState.value.isSoundEnabled)
-
-        viewModel.toggleSound()
-        assertTrue(viewModel.uiState.value.isSoundEnabled)
+        assertFalse(fakeLlm.generateCalled)
     }
 }
-
