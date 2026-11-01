@@ -390,6 +390,10 @@ class VoiceDoctorViewModel(
     // --- Exchange Processing ---
 
     private fun processLiveEnglishExchange(userPrompt: String, isVoice: Boolean) {
+        // Cancel any pending inference job and halt previous speech immediately
+        activeJob?.cancel()
+        ttsManager.stop()
+
         val currentTime = getCurrentFormattedTime()
         val userMessage = ChatMessage(
             sender = MessageSender.USER,
@@ -465,14 +469,20 @@ class VoiceDoctorViewModel(
         }
 
         activeJob = viewModelScope.launch(defaultDispatcher) {
-            val history = _uiState.value.messages
-                .filter { it.text.isNotBlank() && it.id != doctorMsgId }
-                .chunked(2)
-                .mapNotNull { chunk ->
-                    if (chunk.size == 2 && chunk[0].sender == MessageSender.USER && chunk[1].sender == MessageSender.DOCTOR) {
-                        chunk[0].text to chunk[1].text
-                    } else null
+            // Extract completed previous multi-turn exchanges safely, ignoring seed messages and uncompleted turns
+            val history = mutableListOf<Pair<String, String>>()
+            val candidateMessages = _uiState.value.messages.filter {
+                it.text.isNotBlank() && it.id != doctorMsgId && it.id != userMessage.id
+            }
+            var pendingUserText: String? = null
+            for (msg in candidateMessages) {
+                if (msg.sender == MessageSender.USER) {
+                    pendingUserText = msg.text
+                } else if (msg.sender == MessageSender.DOCTOR && pendingUserText != null) {
+                    history.add(pendingUserText to msg.text)
+                    pendingUserText = null
                 }
+            }
 
             val result = orchestrator.processQuery(userPrompt, history)
             val finalText = when (result) {

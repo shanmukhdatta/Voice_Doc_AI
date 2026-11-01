@@ -70,3 +70,4 @@ adb shell pm grant com.aistudio.voicedoctor.wkqmtz android.permission.RECORD_AUD
 - [ ] **Multi-turn Retention:** Conduct 3 conversation exchanges; verify all turns are preserved.
 - [ ] **Clear History:** Tap "Clear History" and verify local database records are wiped.
 - [ ] **Backup Exclusion:** Verify via `adb shell bmgr` or inspection that database files are not uploaded to cloud backup.
+

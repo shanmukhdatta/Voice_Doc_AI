@@ -7,7 +7,7 @@
   "license": "Public Domain / US Government Work (NLM/MedlinePlus data)",
   "citationRequirement": "MedlinePlus, National Library of Medicine, U.S. Department of Health and Human Services",
   "verificationMethod": "SHA-256 integrity validation",
-  "contentSha256": "a52c6fcf6944b5bdfcaf936579828f5694e411324e582a3165f876626e378802",
+  "contentSha256": "f386ee28c8685c6a6346806dfd18978c905b1794a81e28e1fe678bfc3c62ddeb",
   "clinicalReviewStatus": "source_verified_clinical_review_pending",
   "disclaimer": "This offline medical knowledge pack is designed strictly for general health education and information. It is not clinical advice, medical diagnosis, or treatment order."
 }

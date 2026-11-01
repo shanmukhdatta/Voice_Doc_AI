@@ -17,3 +17,4 @@ interface MedicalKnowledgeRepository {
      */
     fun getTopicCount(): Int
 }
+

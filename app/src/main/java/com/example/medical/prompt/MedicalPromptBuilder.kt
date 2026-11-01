@@ -4,9 +4,9 @@ import com.example.medical.model.MedicalEvidence
 import com.example.medical.model.MedicalInput
 
 /**
- * Builds formatted, evidence-aware prompts using the Qwen2.5 chat template.
+ * Builds formatted, evidence-aware prompts using the Qwen3 / Qwen ChatML chat template.
  * Enforces strict system grounding, concise responses, source citation requirements,
- * and context token budgeting.
+ * non-thinking direct inference, and context token budgeting.
  */
 class MedicalPromptBuilder(
     private val maxContextTokens: Int = 2048,
@@ -64,10 +64,10 @@ class MedicalPromptBuilder(
                 "You are NOT a licensed physician, cannot prescribe medication, and cannot make official clinical diagnoses.\n" +
                 "Rules:\n" +
                 "1. Ground your guidance STRICTLY on the provided Verified Medical Reference Excerpts.\n" +
-                "2. When stating facts from an excerpt, cite its source tag (e.g. [MED_COLD_001]).\n" +
+                "2. When stating facts from an excerpt, cite its source tag (e.g. [MED_COLD_001]). Do NOT invent citation tags.\n" +
                 "3. If no reference is provided or symptoms are unclear, give safe general self-care advice and suggest consulting a healthcare professional.\n" +
                 "4. Keep your answer clear, empathetic, and concise: exactly 2 to 4 sentences.\n" +
-                "5. Never output internal thoughts, chain-of-thought, or <think> tags."
+                "5. Never output internal thoughts, chain-of-thought, or <think> tags. Provide your final answer directly."
     }
 
     private fun buildUserInstruction(

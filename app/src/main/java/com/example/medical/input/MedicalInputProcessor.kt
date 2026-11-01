@@ -51,7 +51,10 @@ class MedicalInputProcessor {
         private val VAGUE_OR_AMBIGUOUS_PATTERNS = listOf(
             "feel bad", "feeling unwell", "not feeling good", "body hurts",
             "something is wrong", "what is this", "is it normal", "help me doctor",
-            "tell me", "advice please", "can you check me", "it hurts"
+            "tell me", "advice please", "can you check me", "it hurts",
+            "don't feel well", "dont feel well", "feel sick", "feeling sick",
+            "feels strange", "feel strange", "feels weird", "feel weird",
+            "something feels off", "unwell"
         )
 
         private val DURATION_REGEXES = listOf(
@@ -106,17 +109,44 @@ class MedicalInputProcessor {
             }
         }
 
-        // 2. Red-flag urgent concerns (conservative affirmative check)
+        // 2. Red-flag urgent concerns (affirmative check: excludes negations, quotes, and hypothetical questions)
         for (urgent in URGENT_SIGNALS) {
-            val idx = lower.indexOf(urgent)
-            if (idx != -1) {
-                val prefix = lower.substring(maxOf(0, idx - 25), idx)
-                val isNeg = prefix.contains("no ") || prefix.contains("not ") ||
+            var startIdx = 0
+            while (startIdx < lower.length) {
+                val idx = lower.indexOf(urgent, startIdx)
+                if (idx == -1) break
+
+                val isQuoted = lower.contains("\"$urgent\"") || lower.contains("'$urgent'")
+                val isEducational = (lower.startsWith("what is ") || lower.startsWith("what are ") ||
+                        lower.startsWith("what does ") || lower.startsWith("why do ") ||
+                        lower.startsWith("explain ") || lower.contains("hypothetically")) &&
+                        !lower.contains("i have") && !lower.contains("i'm having") &&
+                        !lower.contains("my ") && !lower.contains("right now")
+
+                if (isQuoted || isEducational) {
+                    startIdx = idx + urgent.length
+                    continue
+                }
+
+                val prefix = lower.substring(maxOf(0, idx - 40), idx)
+                val isPrefixNeg = prefix.contains("no ") || prefix.contains("not ") ||
                         prefix.contains("never ") || prefix.contains("without ") ||
-                        prefix.contains("don't have ") || prefix.contains("dont have ")
-                if (!isNeg) {
+                        prefix.contains("don't have ") || prefix.contains("dont have ") ||
+                        prefix.contains("haven't had ") || prefix.contains("havent had ") ||
+                        prefix.contains("denies ") || prefix.contains("denying ") ||
+                        prefix.contains("negative for ") || prefix.contains("neither ")
+
+                val endIdx = minOf(lower.length, idx + urgent.length + 25)
+                val suffix = lower.substring(idx + urgent.length, endIdx)
+                val isSuffixNeg = suffix.startsWith(": no") || suffix.startsWith(": none") ||
+                        suffix.startsWith(": negative") || suffix.contains("is absent") ||
+                        suffix.contains("not present")
+
+                if (!isPrefixNeg && !isSuffixNeg) {
                     return HealthRequestType.POSSIBLE_URGENT_CONCERN
                 }
+
+                startIdx = idx + urgent.length
             }
         }
 
@@ -159,18 +189,31 @@ class MedicalInputProcessor {
         val detected = mutableListOf<String>()
 
         for (symptom in COMMON_SYMPTOMS) {
-            val idx = lower.indexOf(symptom)
-            if (idx != -1) {
-                // Check for immediate negation in preceding 20 chars
-                val prefix = lower.substring(maxOf(0, idx - 20), idx)
-                val isNegated = prefix.contains("no ") || prefix.contains("not ") ||
+            var startIdx = 0
+            while (startIdx < lower.length) {
+                val idx = lower.indexOf(symptom, startIdx)
+                if (idx == -1) break
+
+                // Check for negation in preceding 30 chars
+                val prefix = lower.substring(maxOf(0, idx - 30), idx)
+                val isPrefixNegated = prefix.contains("no ") || prefix.contains("not ") ||
                         prefix.contains("never ") || prefix.contains("without ") ||
                         prefix.contains("don't have ") || prefix.contains("dont have ") ||
-                        prefix.contains("haven't had ") || prefix.contains("havent had ")
+                        prefix.contains("haven't had ") || prefix.contains("havent had ") ||
+                        prefix.contains("denies ") || prefix.contains("negative for ") ||
+                        prefix.contains("neither ")
 
-                if (!isNegated) {
+                // Check for suffix negation in following 20 chars
+                val endIdx = minOf(lower.length, idx + symptom.length + 20)
+                val suffix = lower.substring(idx + symptom.length, endIdx)
+                val isSuffixNegated = suffix.startsWith(": no") || suffix.startsWith(": none") ||
+                        suffix.startsWith(": negative") || suffix.contains("is absent")
+
+                if (!isPrefixNegated && !isSuffixNegated) {
                     detected.add(symptom)
                 }
+
+                startIdx = idx + symptom.length
             }
         }
 

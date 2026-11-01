@@ -18,3 +18,4 @@ data class MedicalInput(
     val explicitlyReportedDuration: String?,
     val uncertaintyNotes: List<String>
 )
+

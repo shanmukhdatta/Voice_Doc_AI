@@ -12,8 +12,8 @@ This directory contains provenance, license, and topic curation records for the 
 - **License Terms:** Content prepared by officers or employees of the United States Government as part of their official duties is in the public domain in the United States (17 U.S.C. § 105). No proprietary drug guides or copyrighted third-party encyclopedia pages were copied.
 - **Pack Version:** `1.0.0`
 - **Total Topics:** 25 common general-health topics
-- **Integrity SHA-256:** `4fed88892162fddf4232600efaf4bf3ea8ee2b5616d28691995afacffa9ba205`
-- **Clinical Review Status:** `source_verified_clinical_review_pending`. Automated unit tests do not constitute qualified clinical review.
+- **Integrity SHA-256:** `f386ee28c8685c6a6346806dfd18978c905b1794a81e28e1fe678bfc3c62ddeb`
+- **Clinical Review Status:** `source_verified_clinical_review_pending`. All 25 topics have been verified against MedlinePlus public domain summaries; formal clinical accuracy review by licensed healthcare professionals remains pending. Automated unit tests do not constitute clinical validation.
 
 ## Included Pilot Topics (25)
 1. `MED_COLD_001`: Common Cold Overview and Care
@@ -41,3 +41,4 @@ This directory contains provenance, license, and topic curation records for the 
 23. `MED_EXERCISE_023`: Physical Activity Basics for Health
 24. `MED_NUTRITION_024`: Balanced Nutrition and Dietary Basics
 25. `MED_EMERGENCY_025`: Recognizing When to Seek Emergency Care
+

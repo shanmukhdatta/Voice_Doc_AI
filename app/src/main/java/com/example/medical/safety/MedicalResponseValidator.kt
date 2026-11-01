@@ -65,7 +65,8 @@ class MedicalResponseValidator {
             )
         }
 
-        // 5. Grounding check on source tags
+        // 5. Grounding check on source tags:
+        // Citations are NEVER automatically assigned without explicit demonstrated support.
         val validSourceIds = providedEvidence.map { it.sourceId.value }.toSet()
         val foundSources = mutableListOf<SourceId>()
         val matcher = SOURCE_TAG_PATTERN.matcher(cleaned)
@@ -73,7 +74,7 @@ class MedicalResponseValidator {
 
         while (matcher.find()) {
             val tag = matcher.group(1)
-            if (tag in validSourceIds) {
+            if (tag != null && tag in validSourceIds) {
                 foundSources.add(SourceId(tag))
             } else {
                 hasHallucinatedSource = true
@@ -88,9 +89,13 @@ class MedicalResponseValidator {
             }.replace(Regex("\\s+"), " ").trim()
         }
 
-        // If evidence was provided but no tag was cited, automatically attribute the top evidence
-        if (foundSources.isEmpty() && providedEvidence.isNotEmpty()) {
-            foundSources.add(providedEvidence.first().sourceId)
+        // Handle missing evidence conservatively:
+        // When no verified evidence was provided, ensure conservative guidance
+        if (providedEvidence.isEmpty()) {
+            val lowerCleaned = cleaned.lowercase()
+            if (!lowerCleaned.contains("doctor") && !lowerCleaned.contains("physician") && !lowerCleaned.contains("healthcare provider")) {
+                cleaned = "$cleaned Please consult a healthcare professional for specific medical advice."
+            }
         }
 
         return ValidationResult(

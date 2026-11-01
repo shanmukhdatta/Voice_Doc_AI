@@ -15,3 +15,4 @@ data class MedicalEvidence(
     val reviewStatus: String,
     val knowledgeVersion: String
 )
+

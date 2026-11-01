@@ -43,3 +43,4 @@ Before any model-generated response is rendered on screen or spoken via Text-to-
 2. CoT Stripping: `<think>...</think>` tags and reasoning artifacts are stripped.
 3. Citation Verification: Any `[SOURCE_ID]` tag in the response is validated against the retrieved topic list. Hallucinated tags are stripped.
 4. Safety Heuristics: Regex checks scan for prescriptive dosage or diagnostic assertions. Unsafe outputs are replaced with safe fallback text.
+

@@ -20,3 +20,4 @@ sealed interface MedicalResponseResult {
         val safeMessage: String
     ) : MedicalResponseResult
 }
+

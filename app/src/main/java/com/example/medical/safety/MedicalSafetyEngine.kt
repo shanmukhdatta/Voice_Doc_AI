@@ -35,13 +35,14 @@ class MedicalSafetyEngine {
 
         const val EMERGENCY_ESCALATION_TEMPLATE =
             "Your symptoms may indicate an urgent medical situation. " +
-            "Please call 911, 112, or your local emergency services, or proceed to the nearest emergency room immediately. " +
+            "Please call your local emergency services (such as 911 in North America, 112 in Europe and India, 999 in the UK, or your local emergency number) or proceed to the nearest emergency department immediately. " +
             "Do not wait or attempt self-treatment."
 
         const val SUICIDE_ESCALATION_TEMPLATE =
             "If you or someone you know is going through a tough time or having thoughts of self-harm, " +
-            "please know that support is available. Call or text 988 (in the US & Canada) or contact your local mental health helpline immediately. " +
-            "Free, confidential help is available 24/7."
+            "please know that immediate confidential support is available. " +
+            "Call or text 988 (in the US & Canada), call 112 or your national crisis line (in Europe, India, and internationally), or contact local emergency services immediately. " +
+            "Help is free, confidential, and available 24/7."
 
         const val DIAGNOSIS_PRESCRIPTION_REFUSAL_TEMPLATE =
             "I am an offline general health companion and cannot provide formal medical diagnoses or prescribe medications. " +
@@ -151,18 +152,94 @@ class MedicalSafetyEngine {
         )
     }
 
-    private fun matchesAffirmative(text: String, keywords: List<String>): Boolean {
+    fun isHypotheticalOrQuoted(text: String, keyword: String): Boolean {
+        // Check if keyword is surrounded by quotes
+        val quotedVariants = listOf(
+            "\"$keyword\"",
+            "'$keyword'",
+            "“$keyword”",
+            "‘$keyword’"
+        )
+        if (quotedVariants.any { text.contains(it) }) {
+            return true
+        }
+
+        // Check if query is educational / definitional
+        val lower = text.lowercase()
+        val isDefinitional = lower.startsWith("what is ") ||
+                lower.startsWith("what are ") ||
+                lower.startsWith("what does ") ||
+                lower.startsWith("why do ") ||
+                lower.startsWith("why does ") ||
+                lower.startsWith("explain ") ||
+                lower.contains("definition of") ||
+                lower.contains("meaning of") ||
+                lower.contains("in medical terms") ||
+                lower.contains("for a story") ||
+                lower.contains("for school") ||
+                lower.contains("hypothetically") ||
+                lower.contains("in theory")
+
+        val hasPersonalComplaint = lower.contains("i have") ||
+                lower.contains("i'm having") ||
+                lower.contains("im having") ||
+                lower.contains("i feel") ||
+                lower.contains("my ") ||
+                lower.contains("right now") ||
+                lower.contains("suddenly") ||
+                lower.contains("help me") ||
+                lower.contains("hurts")
+
+        return isDefinitional && !hasPersonalComplaint
+    }
+
+    fun matchesAffirmative(text: String, keywords: List<String>): Boolean {
         for (kw in keywords) {
-            val idx = text.indexOf(kw)
-            if (idx != -1) {
-                val prefix = text.substring(maxOf(0, idx - 25), idx)
-                val isNegated = prefix.contains("no ") || prefix.contains("not ") ||
-                        prefix.contains("never ") || prefix.contains("without ") ||
-                        prefix.contains("don't have ") || prefix.contains("dont have ") ||
-                        prefix.contains("haven't had ") || prefix.contains("havent had ")
-                if (!isNegated) {
+            var startIndex = 0
+            while (startIndex < text.length) {
+                val idx = text.indexOf(kw, startIndex)
+                if (idx == -1) break
+
+                // Check quotation / hypothetical context
+                if (isHypotheticalOrQuoted(text, kw)) {
+                    startIndex = idx + kw.length
+                    continue
+                }
+
+                // Check prefix negation window (up to 40 characters before)
+                val prefix = text.substring(maxOf(0, idx - 40), idx)
+                val isPrefixNegated = prefix.contains("no ") ||
+                        prefix.contains("not ") ||
+                        prefix.contains("never ") ||
+                        prefix.contains("without ") ||
+                        prefix.contains("don't have ") ||
+                        prefix.contains("dont have ") ||
+                        prefix.contains("haven't had ") ||
+                        prefix.contains("havent had ") ||
+                        prefix.contains("denies ") ||
+                        prefix.contains("denying ") ||
+                        prefix.contains("negative for ") ||
+                        prefix.contains("free of ") ||
+                        prefix.contains("rule out ") ||
+                        prefix.contains("ruled out ") ||
+                        prefix.contains("neither ")
+
+                // Check suffix negation window (up to 25 characters after)
+                val endIdx = minOf(text.length, idx + kw.length + 25)
+                val suffix = text.substring(idx + kw.length, endIdx)
+                val isSuffixNegated = suffix.startsWith(": no") ||
+                        suffix.startsWith(": none") ||
+                        suffix.startsWith(": negative") ||
+                        suffix.contains("is absent") ||
+                        suffix.contains("is not present") ||
+                        suffix.contains("not present") ||
+                        suffix.contains("ruled out")
+
+                if (!isPrefixNegated && !isSuffixNegated) {
                     return true
                 }
+
+                startIndex = idx + kw.length
             }
         }
         return false

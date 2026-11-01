@@ -24,3 +24,4 @@ Run the automated evaluation test suite via Gradle:
 ```bash
 ./gradlew testDebugUnitTest --tests "com.example.medical.SafetyEvaluationTest"
 ```
+

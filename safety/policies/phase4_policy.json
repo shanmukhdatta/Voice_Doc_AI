@@ -9,35 +9,35 @@
       "ruleId": "RULE_RED_FLAG_SUICIDE",
       "action": "ESCALATE",
       "category": "CRISIS_AND_SELF_HARM",
-      "escalationPhone": "988",
+      "escalationPhone": "988 (US/CA) / 112 / local crisis helpline",
       "keywords": ["suicide", "suicidal", "kill myself", "end my life", "self harm"]
     },
     {
       "ruleId": "RULE_RED_FLAG_STROKE",
       "action": "ESCALATE",
       "category": "CEREBROVASCULAR_EMERGENCY",
-      "escalationPhone": "911",
+      "escalationPhone": "911 / 112 / 999 / local emergency services",
       "keywords": ["face drooping", "arm weakness", "slurred speech", "stroke", "sudden numbness"]
     },
     {
       "ruleId": "RULE_RED_FLAG_CHEST_PAIN",
       "action": "ESCALATE",
       "category": "CARDIAC_EMERGENCY",
-      "escalationPhone": "911",
+      "escalationPhone": "911 / 112 / 999 / local emergency services",
       "keywords": ["chest pain", "crushing pain", "heart attack", "chest pressure"]
     },
     {
       "ruleId": "RULE_RED_FLAG_BREATHING",
       "action": "ESCALATE",
       "category": "ACUTE_RESPIRATORY_DISTRESS",
-      "escalationPhone": "911",
+      "escalationPhone": "911 / 112 / 999 / local emergency services",
       "keywords": ["can't breathe", "cannot breathe", "difficulty breathing", "shortness of breath", "struggling to breathe"]
     },
     {
       "ruleId": "RULE_RED_FLAG_ANAPHYLAXIS",
       "action": "ESCALATE",
       "category": "ANAPHYLAXIS_EMERGENCY",
-      "escalationPhone": "911",
+      "escalationPhone": "911 / 112 / 999 / local emergency services",
       "keywords": ["anaphylaxis", "throat closing", "tongue swollen", "severe allergic reaction"]
     }
   ],
@@ -62,3 +62,4 @@
     }
   ]
 }
+

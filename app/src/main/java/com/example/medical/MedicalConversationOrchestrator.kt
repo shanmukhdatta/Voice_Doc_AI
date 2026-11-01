@@ -95,7 +95,7 @@ class MedicalConversationOrchestrator(
         val citedEvidence = evidence.filter { ev -> validation.citedSources.any { it.value == ev.sourceId.value } }
         return MedicalResponseResult.Answer(
             text = validation.sanitizedText,
-            sources = if (citedEvidence.isNotEmpty()) citedEvidence else evidence.take(1)
+            sources = citedEvidence
         )
     }
 }
