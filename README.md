@@ -1294,8 +1294,8 @@ Keep readable text, touch targets, screen-reader semantics and mute control. Tel
 
 ### Internal implementation documents
 
-- [Phase 2 implementation report](PHASE2_IMPLEMENTATION.md) — on its feature branch.
-- [Phase 3 implementation report](PHASE3_IMPLEMENTATION.md) — on its feature branch.
+- [Phase 2 implementation report](https://github.com/shanmukhdatta/Voice_Doc_AI/blob/feature/offline-voice-baseline/PHASE2_IMPLEMENTATION.md) — on its feature branch.
+- [Phase 3 implementation report](https://github.com/shanmukhdatta/Voice_Doc_AI/blob/feature/offline-llm-phase3/PHASE3_IMPLEMENTATION.md) — on its feature branch.
 - [Hardware checklists](checks/) — Phase 2 and Phase 3 on main; later checklists may live on feature branches.
 - [Superseded Phase 4 implementation](https://github.com/shanmukhdatta/Voice_Doc_AI/blob/feature/medical-safety-phase4/PHASE4_IMPLEMENTATION.md) — **historical experiment; not target Phase 4**.
 - [Original product architecture](https://github.com/shanmukhdatta/VoiceDoc/blob/main/README.md) — broader product vision.
