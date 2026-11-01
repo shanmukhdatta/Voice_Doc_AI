@@ -1,0 +1,64 @@
+{
+  "policyVersion": "2026.4.1",
+  "policyName": "Voice Doctor AI Phase 4 Safety & Triage Specification",
+  "lastReviewed": "2026-11-02",
+  "targetLanguage": "en",
+  "offlineInferenceOnly": true,
+  "redFlagRules": [
+    {
+      "ruleId": "RULE_RED_FLAG_SUICIDE",
+      "action": "ESCALATE",
+      "category": "CRISIS_AND_SELF_HARM",
+      "escalationPhone": "988",
+      "keywords": ["suicide", "suicidal", "kill myself", "end my life", "self harm"]
+    },
+    {
+      "ruleId": "RULE_RED_FLAG_STROKE",
+      "action": "ESCALATE",
+      "category": "CEREBROVASCULAR_EMERGENCY",
+      "escalationPhone": "911",
+      "keywords": ["face drooping", "arm weakness", "slurred speech", "stroke", "sudden numbness"]
+    },
+    {
+      "ruleId": "RULE_RED_FLAG_CHEST_PAIN",
+      "action": "ESCALATE",
+      "category": "CARDIAC_EMERGENCY",
+      "escalationPhone": "911",
+      "keywords": ["chest pain", "crushing pain", "heart attack", "chest pressure"]
+    },
+    {
+      "ruleId": "RULE_RED_FLAG_BREATHING",
+      "action": "ESCALATE",
+      "category": "ACUTE_RESPIRATORY_DISTRESS",
+      "escalationPhone": "911",
+      "keywords": ["can't breathe", "cannot breathe", "difficulty breathing", "shortness of breath", "struggling to breathe"]
+    },
+    {
+      "ruleId": "RULE_RED_FLAG_ANAPHYLAXIS",
+      "action": "ESCALATE",
+      "category": "ANAPHYLAXIS_EMERGENCY",
+      "escalationPhone": "911",
+      "keywords": ["anaphylaxis", "throat closing", "tongue swollen", "severe allergic reaction"]
+    }
+  ],
+  "boundaryRules": [
+    {
+      "ruleId": "RULE_PRESCRIPTION_DIAGNOSIS_REFUSAL",
+      "action": "CLARIFY",
+      "category": "DIAGNOSIS_OR_PRESCRIPTION_DEMAND",
+      "description": "Refuse definitive clinical diagnosis or drug prescription dosing"
+    },
+    {
+      "ruleId": "RULE_PROMPT_INJECTION_OUT_OF_SCOPE",
+      "action": "OUT_OF_SCOPE",
+      "category": "NON_HEALTH_OR_INJECTION",
+      "description": "Reject adversarial injection or non-health prompts"
+    },
+    {
+      "ruleId": "RULE_UNCLEAR_INPUT",
+      "action": "CLARIFY",
+      "category": "AMBIGUOUS_INPUT",
+      "description": "Request more context for vague or single-word inputs"
+    }
+  ]
+}

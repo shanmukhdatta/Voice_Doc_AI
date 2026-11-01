@@ -1,0 +1,13 @@
+{
+  "packName": "VoiceDoctor_Pilot_MedlinePlus_Pack",
+  "version": "1.0.0",
+  "topicCount": 25,
+  "language": "en",
+  "publisher": "U.S. National Library of Medicine (MedlinePlus Public Domain summaries)",
+  "license": "Public Domain / US Government Work (NLM/MedlinePlus data)",
+  "citationRequirement": "MedlinePlus, National Library of Medicine, U.S. Department of Health and Human Services",
+  "verificationMethod": "SHA-256 integrity validation",
+  "contentSha256": "a52c6fcf6944b5bdfcaf936579828f5694e411324e582a3165f876626e378802",
+  "clinicalReviewStatus": "source_verified_clinical_review_pending",
+  "disclaimer": "This offline medical knowledge pack is designed strictly for general health education and information. It is not clinical advice, medical diagnosis, or treatment order."
+}

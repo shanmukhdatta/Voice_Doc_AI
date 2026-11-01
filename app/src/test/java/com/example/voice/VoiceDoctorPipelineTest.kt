@@ -200,7 +200,7 @@ class VoiceDoctorPipelineTest {
 
         // 4. Verify LLM receives transcript
         assertTrue(fakeLlm.generateCalled)
-        assertEquals("I feel feverish and tired", fakeLlm.lastPrompt)
+        assertTrue(fakeLlm.lastPrompt?.contains("I feel feverish and tired") == true)
 
         // 5. Verify messages: 1 USER message + 1 DOCTOR generated message
         val messages = viewModel.uiState.value.messages

@@ -8,6 +8,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ConversationRepository
 import com.example.data.VoiceDoctorDatabase
+import com.example.medical.MedicalConversationOrchestrator
+import com.example.medical.input.MedicalInputProcessor
+import com.example.medical.knowledge.KeywordMedicalRepository
+import com.example.medical.knowledge.MedicalKnowledgeRepository
+import com.example.medical.model.MedicalResponseResult
+import com.example.medical.safety.MedicalSafetyEngine
+import com.example.medical.safety.SafetyAction
 import com.example.model.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.DoctorUiState
@@ -47,6 +54,13 @@ class VoiceDoctorViewModel(
     private val conversationRepository: ConversationRepository = ConversationRepository(
         VoiceDoctorDatabase.getInstance(application).conversationDao(),
         application
+    ),
+    private val medicalKnowledgeRepository: MedicalKnowledgeRepository = KeywordMedicalRepository(
+        assetManager = application.assets
+    ),
+    private val orchestrator: MedicalConversationOrchestrator = MedicalConversationOrchestrator(
+        knowledgeRepository = medicalKnowledgeRepository,
+        llmEngine = llmEngine
     ),
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : AndroidViewModel(application) {
@@ -385,6 +399,43 @@ class VoiceDoctorViewModel(
             isVoice = isVoice
         )
 
+        val doctorMsgId = UUID.randomUUID().toString()
+        val initialDoctorMessage = ChatMessage(
+            id = doctorMsgId,
+            sender = MessageSender.DOCTOR,
+            text = "",
+            time = currentTime,
+            isRead = true,
+            isVoice = isVoice
+        )
+
+        // Pre-check safety escalation first (emergency cases bypass model download requirement)
+        val inputProcessor = MedicalInputProcessor()
+        val safetyEngine = MedicalSafetyEngine()
+        val processedInput = inputProcessor.process(userPrompt)
+        val safetyDecision = safetyEngine.inspectInput(processedInput)
+
+        if (safetyDecision.action == SafetyAction.ESCALATE) {
+            val escalationText = safetyDecision.publicMessage ?: MedicalSafetyEngine.EMERGENCY_ESCALATION_TEMPLATE
+            val doctorReply = initialDoctorMessage.copy(text = escalationText)
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages + userMessage + doctorReply,
+                    uiState = DoctorUiState.Idle
+                )
+            }
+            if (_uiState.value.isSoundEnabled) {
+                ttsManager.speak(
+                    text = escalationText,
+                    isSoundEnabled = true,
+                    onStart = { _uiState.update { it.copy(uiState = DoctorUiState.Speaking) } },
+                    onDone = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } },
+                    onError = { _uiState.update { it.copy(uiState = DoctorUiState.Idle) } }
+                )
+            }
+            return
+        }
+
         // Check model installation status
         val installState = _uiState.value.modelInstallState
         if (installState !is ModelInstallState.Installed) {
@@ -406,16 +457,6 @@ class VoiceDoctorViewModel(
             return
         }
 
-        val doctorMsgId = UUID.randomUUID().toString()
-        val initialDoctorMessage = ChatMessage(
-            id = doctorMsgId,
-            sender = MessageSender.DOCTOR,
-            text = "",
-            time = currentTime,
-            isRead = true,
-            isVoice = isVoice
-        )
-
         _uiState.update { state ->
             state.copy(
                 messages = state.messages + userMessage + initialDoctorMessage,
@@ -423,27 +464,22 @@ class VoiceDoctorViewModel(
             )
         }
 
-        activeJob = viewModelScope.launch {
-            val accumulatedText = StringBuilder()
-
-            llmEngine.generate(userPrompt).collect { token ->
-                accumulatedText.append(token)
-                val currentText = accumulatedText.toString()
-
-                _uiState.update { state ->
-                    val updatedMessages = state.messages.map { msg ->
-                        if (msg.id == doctorMsgId) {
-                            msg.copy(text = currentText)
-                        } else {
-                            msg
-                        }
-                    }
-                    state.copy(messages = updatedMessages)
+        activeJob = viewModelScope.launch(defaultDispatcher) {
+            val history = _uiState.value.messages
+                .filter { it.text.isNotBlank() && it.id != doctorMsgId }
+                .chunked(2)
+                .mapNotNull { chunk ->
+                    if (chunk.size == 2 && chunk[0].sender == MessageSender.USER && chunk[1].sender == MessageSender.DOCTOR) {
+                        chunk[0].text to chunk[1].text
+                    } else null
                 }
-            }
 
-            val finalText = accumulatedText.toString().trim().ifEmpty {
-                "I am here to help. Could you please describe your symptoms in more detail?"
+            val result = orchestrator.processQuery(userPrompt, history)
+            val finalText = when (result) {
+                is MedicalResponseResult.Answer -> result.text
+                is MedicalResponseResult.Clarification -> result.question
+                is MedicalResponseResult.Escalation -> result.message
+                is MedicalResponseResult.Unavailable -> result.safeMessage
             }
 
             // Update doctor message with final text

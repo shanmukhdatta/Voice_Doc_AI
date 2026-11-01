@@ -86,6 +86,45 @@ class ConversationRepositoryTest {
     }
 
     @Test
+    fun testMultiTurnConversationsPreservedWithoutCascadeLoss() = runTest {
+        repository.setHistoryEnabled(true)
+        val convId = UUID.randomUUID().toString()
+
+        // Turn 1
+        val turn1 = listOf(
+            ChatMessage(id = "msg1", sender = MessageSender.USER, text = "I have a cough", time = "10:00 AM", timestamp = 1000L),
+            ChatMessage(id = "msg2", sender = MessageSender.DOCTOR, text = "How long has it lasted?", time = "10:01 AM", timestamp = 1001L)
+        )
+        repository.saveConversation(convId, "Cough evaluation", turn1)
+
+        // Turn 2
+        val turn2 = listOf(
+            ChatMessage(id = "msg3", sender = MessageSender.USER, text = "Since yesterday", time = "10:02 AM", timestamp = 1002L),
+            ChatMessage(id = "msg4", sender = MessageSender.DOCTOR, text = "Stay hydrated and rest", time = "10:03 AM", timestamp = 1003L)
+        )
+        repository.saveConversation(convId, "Cough evaluation", turn2)
+
+        // Turn 3
+        val turn3 = listOf(
+            ChatMessage(id = "msg5", sender = MessageSender.USER, text = "Can I take honey?", time = "10:04 AM", timestamp = 1004L),
+            ChatMessage(id = "msg6", sender = MessageSender.DOCTOR, text = "Honey can soothe your throat", time = "10:05 AM", timestamp = 1005L)
+        )
+        repository.saveConversation(convId, "Cough evaluation", turn3)
+
+        val convs = repository.getAllConversations().first()
+        assertEquals(1, convs.size)
+
+        val allMessages = repository.getMessagesList(convId)
+        assertEquals("All 6 messages across 3 turns must be preserved", 6, allMessages.size)
+        assertEquals("msg1", allMessages[0].id)
+        assertEquals("msg2", allMessages[1].id)
+        assertEquals("msg3", allMessages[2].id)
+        assertEquals("msg4", allMessages[3].id)
+        assertEquals("msg5", allMessages[4].id)
+        assertEquals("msg6", allMessages[5].id)
+    }
+
+    @Test
     fun testDeleteAndClearHistory() = runTest {
         repository.setHistoryEnabled(true)
 

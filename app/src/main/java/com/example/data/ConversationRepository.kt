@@ -44,7 +44,11 @@ class ConversationRepository(
                 createdAt = now,
                 updatedAt = now
             )
-            conversationDao.insertConversation(conversation)
+            val rowId = conversationDao.insertConversation(conversation)
+            if (rowId == -1L) {
+                // Conversation already existed; update timestamp and title safely without deleting existing messages!
+                conversationDao.updateConversationMetadata(conversationId, title.take(60), now)
+            }
 
             val entities = messages.map { msg ->
                 ChatMessageEntity(

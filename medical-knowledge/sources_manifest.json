@@ -1,0 +1,11 @@
+{
+  "packName": "VoiceDoctor_Pilot_MedlinePlus_Pack",
+  "version": "1.0.0",
+  "topicCount": 25,
+  "language": "en",
+  "publisher": "MedlinePlus (National Library of Medicine)",
+  "sourceUrl": "https://medlineplus.gov/",
+  "license": "Public Domain (17 U.S.C. § 105)",
+  "contentSha256": "4fed88892162fddf4232600efaf4bf3ea8ee2b5616d28691995afacffa9ba205",
+  "clinicalReviewStatus": "source_verified_clinical_review_pending"
+}

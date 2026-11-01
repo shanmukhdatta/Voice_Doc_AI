@@ -52,9 +52,15 @@ class ModelRepositoryTest {
         // If file exists but size doesn't match expected bytes, remains NotInstalled
         assertEquals(ModelInstallState.NotInstalled, repository.checkExistingModel())
 
+        // If file exists with valid receipt
+        repository.metaFile.writeText(ModelRepository.EXPECTED_SHA256)
+        // Without exact size, still NotInstalled
+        assertEquals(ModelInstallState.NotInstalled, repository.checkExistingModel())
+
         // Now test removeInstalledModel
         repository.removeInstalledModel()
         assertFalse(file.exists())
+        assertFalse(repository.metaFile.exists())
         assertEquals(ModelInstallState.NotInstalled, repository.installState.value)
     }
 
