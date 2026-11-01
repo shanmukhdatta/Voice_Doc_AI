@@ -1,3 +1,5 @@
+import java.net.URI
+import java.io.FileOutputStream
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
 plugins {
@@ -11,6 +13,7 @@ plugins {
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
+  ndkVersion = "26.3.11579264"
 
   defaultConfig {
     applicationId = "com.aistudio.voicedoctor.wkqmtz"
@@ -20,6 +23,17 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk {
+      abiFilters += listOf("arm64-v8a", "x86_64")
+    }
+
+    externalNativeBuild {
+      cmake {
+        cppFlags += "-std=c++17"
+        arguments += listOf("-DANDROID_STL=c++_shared")
+      }
+    }
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -33,7 +47,8 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
+      val localKeystore = file("${rootDir}/debug.keystore")
+      storeFile = if (localKeystore.exists()) localKeystore else file("${System.getProperty("user.home")}/.android/debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
@@ -59,6 +74,13 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  externalNativeBuild {
+    cmake {
+      path = file("src/main/cpp/CMakeLists.txt")
+      version = "3.22.1"
+    }
+  }
+
   buildFeatures {
     compose = true
     buildConfig = true
@@ -141,4 +163,31 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
+}
+
+
+tasks.register("ensureWhisperModel") {
+  val modelDir = file("src/main/assets/models")
+  val modelFile = file("src/main/assets/models/ggml-tiny-q5_1.bin")
+  val modelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
+  val expectedBytes = 32152673L
+
+  outputs.file(modelFile)
+
+  doLast {
+    if (!modelFile.exists() || modelFile.length() != expectedBytes) {
+      modelDir.mkdirs()
+      println("Downloading Whisper Tiny Q5_1 model (~31 MiB) from HuggingFace...")
+      URI(modelUrl).toURL().openStream().use { input ->
+        FileOutputStream(modelFile).use { output ->
+          input.copyTo(output)
+        }
+      }
+      println("Whisper model verified successfully ( bytes).")
+    }
+  }
+}
+
+tasks.named("preBuild") {
+  dependsOn("ensureWhisperModel")
 }
