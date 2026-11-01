@@ -119,7 +119,7 @@ class WhisperSpeechToTextEngine(
                 }
 
                 val cleanText = recognizedText.trim()
-                Log.i(TAG, "Inference completed in $latencyMs ms for ${audio.size} samples (${audio.size / 16000.0}s). Result: '$cleanText'")
+                Log.i(TAG, "Inference completed in $latencyMs ms for ${audio.size} samples (${audio.size / 16000.0}s). Characters: ${cleanText.length}")
                 Result.success(cleanText)
             } catch (e: Exception) {
                 Log.e(TAG, "Whisper transcription failed", e)

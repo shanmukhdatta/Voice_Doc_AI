@@ -176,6 +176,12 @@ class TextToSpeechManager(
             return false
         }
 
+        if (!_isOfflineVoiceAvailable.value) {
+            Log.w(TAG, "No verified offline English voice available. Refusing online voice fallback.")
+            onError?.invoke("Offline English voice not installed on device")
+            return false
+        }
+
         if (text.isBlank()) {
             onDone?.invoke()
             return false

@@ -198,19 +198,24 @@ open class AudioRecorder(
         cancelRecording()
     }
 
+    private val recordLock = Any()
+
     private fun cleanUpNativeRecord() {
+        _isRecording.value = false
+        val recordToRelease: AudioRecord?
+        synchronized(recordLock) {
+            recordToRelease = audioRecord
+            audioRecord = null
+        }
         try {
-            audioRecord?.apply {
+            recordToRelease?.apply {
                 if (recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                     stop()
                 }
                 release()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error releasing AudioRecord", e)
-        } finally {
-            audioRecord = null
-            _isRecording.value = false
+            Log.e(TAG, "Error releasing AudioRecord safely", e)
         }
     }
 
