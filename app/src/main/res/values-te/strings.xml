@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">వాయిస్ డాక్టర్ AI</string>
+    <string name="greeting_title">నమస్కారం! నేను మీకు ఎలా సహాయపడగలను?</string>
+    <string name="listening_title">వింటున్నాను…</string>
+    <string name="listening_subtitle">మీరు ఇప్పుడు మాట్లాడవచ్చు.</string>
+    <string name="hold_to_talk">మాట్లాడటానికి నొక్కి పట్టుకోండి</string>
+    <string name="release_to_send">పంపడానికి విడుదల చేయండి</string>
+    <string name="listening_status">వింటున్నాను…</string>
+    <string name="processing_status">సందేశాన్ని ప్రాసెస్ చేస్తోంది…</string>
+    <string name="swipe_up_hint">మొత్తం సంభాషణ చూడటానికి పైకి స్వైప్ చేయండి</string>
+    <string name="type_message_hint">ఆరోగ్య ప్రశ్న అడగండి…</string>
+    <string name="demo_disclaimer">డెమో మాత్రమే: ఈ యాప్ సాధారణ ఆరోగ్య సమాచారాన్ని అందిస్తుంది మరియు వైద్య నిర్ధారణ లేదా చికిత్స కాదు.</string>
+    <string name="initial_user_msg">ఉదయం నుండి నాకు తలనొప్పిగా ఉంది.</string>
+    <string name="initial_doctor_reply">నేను మీకు సహాయం చేయగలను. నొప్పి రకం మరియు తీవ్రత గురించి మరింత చెప్పగలరా?</string>
+    <string name="followup_user_msg">తేలికపాటి నొప్పి ఉంది.</string>
+    <string name="followup_doctor_reply">విశ్రాంతి తీసుకోండి మరియు తగినంత నీరు త్రాగండి. లక్షణాలు కొనసాగితే వైద్య సలహా తీసుకోండి.</string>
+    <string name="sound_enabled">శబ్దం ప్రారంభించబడింది</string>
+    <string name="sound_muted">శబ్దం నిలిపివేయబడింది</string>
+    <string name="menu_action">మెనూ</string>
+    <string name="cancel_action">రద్దు చేయండి</string>
+    <string name="edit_action">సవరించండి</string>
+    <string name="share_action">భాగస్వామ్యం చేయండి</string>
+    <string name="lang_english">EN</string>
+    <string name="lang_telugu">తెలుగు</string>
+</resources>

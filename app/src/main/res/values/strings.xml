@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">Voice Doctor AI</string>
+    <string name="greeting_title">Hello! How can I help you today?</string>
+    <string name="listening_title">I’m listening…</string>
+    <string name="listening_subtitle">You can speak now.</string>
+    <string name="hold_to_talk">Hold to talk</string>
+    <string name="release_to_send">Release to send</string>
+    <string name="listening_status">Listening…</string>
+    <string name="processing_status">Processing your message…</string>
+    <string name="swipe_up_hint">Swipe up to see full conversation</string>
+    <string name="type_message_hint">Ask a health question…</string>
+    <string name="demo_disclaimer">Demo only: This app provides general health information and is not a medical diagnosis or treatment.</string>
+    <string name="initial_user_msg">I have a headache since morning.</string>
+    <string name="initial_doctor_reply">I\'m here to help. Can you tell me more about the pain, like its type and intensity?</string>
+    <string name="followup_user_msg">It is mild.</string>
+    <string name="followup_doctor_reply">Try to rest and stay hydrated. Seek medical advice if symptoms persist.</string>
+    <string name="sound_enabled">Sound on</string>
+    <string name="sound_muted">Sound muted</string>
+    <string name="menu_action">Menu</string>
+    <string name="cancel_action">Cancel</string>
+    <string name="edit_action">Edit</string>
+    <string name="share_action">Share</string>
+    <string name="lang_english">EN</string>
+    <string name="lang_telugu">తెలుగు</string>
+</resources>
