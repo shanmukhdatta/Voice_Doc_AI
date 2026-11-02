@@ -13,6 +13,13 @@
 
 ---
 
+## Repository navigation
+
+- [Directory-by-directory documentation](docs/FOLDER_INDEX.md): direct files, purpose, nested folders, runtime responsibilities and caveats.
+- [Phase 4 implementation report](PHASE4_ADAPTIVE_RAG_IMPLEMENTATION.md): implemented prototype and reported tests.
+- [Known release blockers and cross-laptop handoff](docs/PHASE4_HANDOFF_AND_RELEASE_GATES.md).
+- [Static GitHub Pages project showcase](https://shanmukhdatta.github.io/Voice_Doc_AI/) (website activation must be verified).
+
 ## 00. Read this first: implementation truth and branch separation
 
 This repository contains several generations of work. **Do not mistake the old Phase 4 prototype for the newly finalized Phase 4 architecture.**
