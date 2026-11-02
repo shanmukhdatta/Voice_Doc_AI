@@ -61,6 +61,7 @@ open class ModelRepository(
 
     private val modelsDir = File(context.filesDir, "models")
     val modelFile = File(modelsDir, MODEL_FILENAME)
+    val metaFile = File(modelsDir, "$MODEL_FILENAME.verified")
     private val partialFile = File(modelsDir, "$MODEL_FILENAME.partial")
 
     private val _installState = MutableStateFlow<ModelInstallState>(ModelInstallState.NotInstalled)
@@ -73,10 +74,13 @@ open class ModelRepository(
     }
 
     override fun checkExistingModel(): ModelInstallState {
-        if (modelFile.exists() && modelFile.length() == EXPECTED_BYTES) {
-            val state = ModelInstallState.Installed(modelFile.absolutePath, modelFile.length())
-            _installState.value = state
-            return state
+        if (modelFile.exists() && modelFile.length() == EXPECTED_BYTES && metaFile.exists()) {
+            val record = try { metaFile.readText().trim() } catch (e: Exception) { "" }
+            if (record.equals(EXPECTED_SHA256, ignoreCase = true)) {
+                val state = ModelInstallState.Installed(modelFile.absolutePath, modelFile.length())
+                _installState.value = state
+                return state
+            }
         }
         val state = ModelInstallState.NotInstalled
         _installState.value = state
@@ -109,6 +113,9 @@ open class ModelRepository(
         downloadJob = null
         if (partialFile.exists()) {
             partialFile.delete()
+        }
+        if (metaFile.exists()) {
+            metaFile.delete()
         }
         val deleted = if (modelFile.exists()) modelFile.delete() else true
         _installState.value = ModelInstallState.NotInstalled
@@ -198,6 +205,13 @@ open class ModelRepository(
                     // Fallback copy
                     partialFile.copyTo(modelFile, overwrite = true)
                     partialFile.delete()
+                }
+
+                // Write verified install receipt bound to SHA-256
+                try {
+                    metaFile.writeText(EXPECTED_SHA256)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to write verification receipt", e)
                 }
 
                 Log.i(TAG, "Model successfully installed at ${modelFile.absolutePath}")

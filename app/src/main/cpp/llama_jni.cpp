@@ -197,27 +197,32 @@ Java_com_example_voice_llm_LlamaNative_completionInit(
     const auto tokens_list = common_tokenize(context, text, true, parse_special == JNI_TRUE);
     env->ReleaseStringUTFChars(jtext, text);
 
+    const size_t total_tokens = tokens_list.size();
     auto n_ctx = llama_n_ctx(context);
-    if (tokens_list.size() >= static_cast<size_t>(n_ctx)) {
-        LOGe("Prompt size (%zu) exceeds context window (%d)", tokens_list.size(), n_ctx);
-        return -1;
+    // Reserve at least 64 tokens for generation
+    if (total_tokens + 64 > static_cast<size_t>(n_ctx)) {
+        LOGe("Prompt size (%zu) + reserve (64) exceeds context window (%d)", total_tokens, n_ctx);
+        return -2;
     }
 
-    common_batch_clear(*batch);
+    const size_t batch_capacity = 512;
 
-    for (size_t i = 0; i < tokens_list.size(); ++i) {
-        common_batch_add(*batch, tokens_list[i], static_cast<llama_pos>(i), { 0 }, false);
-    }
+    for (size_t chunk_start = 0; chunk_start < total_tokens; chunk_start += batch_capacity) {
+        const size_t chunk_end = std::min(chunk_start + batch_capacity, total_tokens);
+        common_batch_clear(*batch);
 
-    if (batch->n_tokens > 0) {
-        batch->logits[batch->n_tokens - 1] = true;
+        for (size_t i = chunk_start; i < chunk_end; ++i) {
+            const bool is_last = (i == total_tokens - 1);
+            common_batch_add(*batch, tokens_list[i], static_cast<llama_pos>(i), { 0 }, is_last);
+        }
+
         if (llama_decode(context, *batch) != 0) {
-            LOGe("llama_decode failed on prompt ingestion");
+            LOGe("llama_decode failed on prompt chunk at %zu", chunk_start);
             return -1;
         }
     }
 
-    return batch->n_tokens;
+    return static_cast<jint>(total_tokens);
 }
 
 JNIEXPORT jstring JNICALL

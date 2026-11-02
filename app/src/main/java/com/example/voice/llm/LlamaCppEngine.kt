@@ -32,8 +32,19 @@ class LlamaCppEngine(
             "Do not output reasoning or thinking tags."
 
         fun formatPrompt(userPrompt: String): String {
+            val trimmed = userPrompt.trim()
+            // If the prompt is already formatted with Qwen/ChatML template markers, do not double-wrap
+            if (trimmed.startsWith("<|im_start|>")) {
+                return if (trimmed.endsWith("<|im_start|>assistant\n")) {
+                    trimmed
+                } else if (trimmed.endsWith("<|im_start|>assistant")) {
+                    "$trimmed\n"
+                } else {
+                    "$trimmed\n<|im_start|>assistant\n"
+                }
+            }
             return "<|im_start|>system\n$SYSTEM_PROMPT<|im_end|>\n" +
-                   "<|im_start|>user\n${userPrompt.trim()}<|im_end|>\n" +
+                   "<|im_start|>user\n$trimmed<|im_end|>\n" +
                    "<|im_start|>assistant\n"
         }
     }
