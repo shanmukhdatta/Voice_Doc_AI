@@ -13,6 +13,20 @@
 
 ---
 
+## Project website and folder documentation
+
+**Static GitHub Pages showcase:** https://shanmukhdatta.github.io/Voice_Doc_AI/ (availability is subject to successful Pages activation and deployment).
+
+- [Website source and deployment instructions](site/README.md)
+- [Phase 4 first-party folder-by-folder documentation](https://github.com/shanmukhdatta/Voice_Doc_AI/blob/feature/adaptive-conversational-rag-phase4/docs/FOLDER_INDEX.md)
+- [Current Phase 4 implementation branch](https://github.com/shanmukhdatta/Voice_Doc_AI/tree/feature/adaptive-conversational-rag-phase4)
+- [Known validation gaps and cross-laptop handoff](https://github.com/shanmukhdatta/Voice_Doc_AI/blob/feature/adaptive-conversational-rag-phase4/docs/PHASE4_HANDOFF_AND_RELEASE_GATES.md)
+
+> The public site is an informational portfolio demonstration, not a medical-chat web app. Source code and tests do not establish clinical safety.
+
+---
+
+
 ## 00. Read this first: implementation truth and branch separation
 
 This repository contains several generations of work. **Do not mistake the old Phase 4 prototype for the newly finalized Phase 4 architecture.**
