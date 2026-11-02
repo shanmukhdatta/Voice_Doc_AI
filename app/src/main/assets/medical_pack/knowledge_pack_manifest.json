@@ -1,0 +1,61 @@
+{
+  "pack_name": "MedlinePlus_HealthTopics_RAG_Pack",
+  "pack_version": "2026.10.31",
+  "release_date": "2026-10-31",
+  "schema_version": "1.0",
+  "source": "Official MedlinePlus English Health Topics XML Release",
+  "publisher": "National Library of Medicine (NLM), U.S. Department of Health and Human Services",
+  "license": "Public Domain (17 U.S.C. \u00a7 105 - Works of the United States Government)",
+  "clinical_review_status": "source_verified_clinical_review_pending",
+  "embedding_model": {
+    "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+    "vector_dimension": 384,
+    "quantization": "INT8 dynamic",
+    "pooling": "masked_mean_pooling",
+    "normalization": "L2",
+    "max_seq_length": 256
+  },
+  "statistics": {
+    "total_topics": 1016,
+    "total_passages": 1016,
+    "total_asset_size_mb": 28.65
+  },
+  "files": [
+    {
+      "name": "medical_knowledge.db",
+      "size_bytes": 3354624,
+      "size_mb": 3.2,
+      "sha256": "1daeb88d026b0ff379ffdd8795bafa25e2b5dc250211fec6f7a384edce1836da"
+    },
+    {
+      "name": "medical_embeddings.bin",
+      "size_bytes": 1560588,
+      "size_mb": 1.49,
+      "sha256": "1cf36bdeed4dc8d01e53ba92bbecc0defedafb2697df091e48246853e6bd64ac"
+    },
+    {
+      "name": "passage_ids.json",
+      "size_bytes": 16893,
+      "size_mb": 0.02,
+      "sha256": "1ab75abb3240b78238a52fccb24e61fb5845031df85e73999ba52986a88cfb39"
+    },
+    {
+      "name": "passages.jsonl",
+      "size_bytes": 1390275,
+      "size_mb": 1.33,
+      "sha256": "e7d3c3684ef77e1e8b50b74ef2fe87ab350abc5d97c5c3730c797285140f8ab6"
+    },
+    {
+      "name": "model_quantized.onnx",
+      "size_bytes": 23455019,
+      "size_mb": 22.37,
+      "sha256": "f055c0ac50a50b486bfc05a146725310cb8dd96f0868e48b10c3c1012d4ff6b8"
+    },
+    {
+      "name": "vocab.txt",
+      "size_bytes": 262030,
+      "size_mb": 0.25,
+      "sha256": "b49e80874c5efbc7f4cde245a812673b05ef1360ced56b8bc8c750eaeef3fe0f"
+    }
+  ]
+}

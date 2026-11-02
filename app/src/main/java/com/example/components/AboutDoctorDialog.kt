@@ -1,6 +1,7 @@
 package com.example.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,6 +45,8 @@ import com.example.ui.theme.DoctorTextSecondary
 @Composable
 fun AboutDoctorDialog(
     language: AppLanguage,
+    isEvidenceModeEnabled: Boolean = true,
+    onToggleEvidenceMode: () -> Unit = {},
     onDismiss: () -> Unit,
     onClearChat: () -> Unit,
     onRestoreSample: () -> Unit,
@@ -127,13 +132,56 @@ fun AboutDoctorDialog(
                     text = if (language == AppLanguage.TELUGU) "ఇంగ్లీష్ మరియు తెలుగు భాషల మద్దతు" else "Bilingual: English & Telugu UI toggling"
                 )
                 FeatureItem(
-                    text = if (language == AppLanguage.TELUGU) "ఆన్-డివైస్ LLM & విస్పర్స్ ASR" else "On-device Whisper STT & llama.cpp LLM"
+                    text = if (language == AppLanguage.TELUGU) "ఆన్-డివైస్ RAG & విస్పర్స్ ASR" else "On-device MiniLM RAG + Qwen LLM + Whisper"
                 )
                 FeatureItem(
                     text = if (language == AppLanguage.TELUGU) "విస్తరించదగిన సంభాషణ చరిత్ర" else "Opt-in local SQLite message history"
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Evidence Mode Toggle Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isEvidenceModeEnabled) Color(0xFFE8F5E9) else Color(0xFFFFF3E0))
+                        .clickable { onToggleEvidenceMode() }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isEvidenceModeEnabled) "Evidence Mode: ON" else "Evidence Mode: OFF",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (isEvidenceModeEnabled) Color(0xFF2E7D32) else Color(0xFFE65100)
+                            )
+                            Text(
+                                text = if (isEvidenceModeEnabled)
+                                    "Grounded in 1,016 verified MedlinePlus topics"
+                                else
+                                    "LLM only — not source-grounded",
+                                fontSize = 11.sp,
+                                color = DoctorTextSecondary
+                            )
+                        }
+                        Switch(
+                            checked = isEvidenceModeEnabled,
+                            onCheckedChange = { onToggleEvidenceMode() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF2E7D32),
+                                checkedTrackColor = Color(0xFFA5D6A7)
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Action buttons for Model & History
                 Row(

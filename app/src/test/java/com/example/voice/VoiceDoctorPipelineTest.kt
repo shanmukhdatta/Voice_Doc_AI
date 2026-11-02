@@ -185,6 +185,9 @@ class VoiceDoctorPipelineTest {
         )
         advanceUntilIdle()
 
+        viewModel.toggleEvidenceMode()
+        advanceUntilIdle()
+
         val initialMessageCount = viewModel.uiState.value.messages.size
 
         // 1. User records voice in English
@@ -200,7 +203,7 @@ class VoiceDoctorPipelineTest {
 
         // 4. Verify LLM receives transcript
         assertTrue(fakeLlm.generateCalled)
-        assertEquals("I feel feverish and tired", fakeLlm.lastPrompt)
+        assertTrue(fakeLlm.lastPrompt!!.contains("I feel feverish and tired"))
 
         // 5. Verify messages: 1 USER message + 1 DOCTOR generated message
         val messages = viewModel.uiState.value.messages

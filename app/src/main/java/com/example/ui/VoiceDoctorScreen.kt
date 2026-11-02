@@ -276,10 +276,12 @@ fun VoiceDoctorScreen(
                 )
             }
 
-            // Info Dialog
+            // Info Dialog with Evidence Mode Toggle
             if (state.showInfoDialog) {
                 AboutDoctorDialog(
                     language = state.currentLanguage,
+                    isEvidenceModeEnabled = state.isEvidenceModeEnabled,
+                    onToggleEvidenceMode = { viewModel.toggleEvidenceMode() },
                     onDismiss = { viewModel.setInfoDialog(false) },
                     onClearChat = { viewModel.clearConversation() },
                     onRestoreSample = { viewModel.loadSampleConversation() },

@@ -1,7 +1,9 @@
 package com.example.model
 
+import com.example.conversation.SessionState
 import com.example.data.ConversationEntity
 import com.example.modelmanager.ModelInstallState
+import com.example.rag.EvidenceBundle
 import java.util.UUID
 
 enum class AppLanguage(val code: String, val label: String) {
@@ -21,7 +23,9 @@ data class ChatMessage(
     val time: String,
     val isRead: Boolean = true,
     val isVoice: Boolean = true,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val citations: List<String> = emptyList(),
+    val actionType: String? = null
 )
 
 sealed interface DoctorUiState {
@@ -65,5 +69,8 @@ data class VoiceDoctorState(
     val showModelDownloadDialog: Boolean = false,
     val isHistoryEnabled: Boolean = false,
     val showHistorySheet: Boolean = false,
-    val savedConversations: List<ConversationEntity> = emptyList()
+    val savedConversations: List<ConversationEntity> = emptyList(),
+    val isEvidenceModeEnabled: Boolean = true,
+    val lastEvidenceBundle: EvidenceBundle = EvidenceBundle.EMPTY,
+    val sessionState: SessionState = SessionState()
 )

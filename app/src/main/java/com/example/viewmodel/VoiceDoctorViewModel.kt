@@ -6,8 +6,13 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.conversation.SessionState
 import com.example.data.ConversationRepository
 import com.example.data.VoiceDoctorDatabase
+import com.example.medical.ConversationalRagOrchestrator
+import com.example.medical.OrchestratorUpdate
+import com.example.medical.QwenConversationPlanner
+import com.example.medical.ValidatedAction
 import com.example.model.AppLanguage
 import com.example.model.ChatMessage
 import com.example.model.DoctorUiState
@@ -16,6 +21,8 @@ import com.example.model.VoiceDoctorState
 import com.example.modelmanager.IModelRepository
 import com.example.modelmanager.ModelInstallState
 import com.example.modelmanager.ModelRepository
+import com.example.rag.EvidenceBundle
+import com.example.rag.MedicalPackManager
 import com.example.voice.AudioRecorder
 import com.example.voice.SpeechToTextEngine
 import com.example.voice.TextToSpeechManager
@@ -48,6 +55,9 @@ class VoiceDoctorViewModel(
         VoiceDoctorDatabase.getInstance(application).conversationDao(),
         application
     ),
+    private val medicalPackManager: MedicalPackManager = MedicalPackManager(application),
+    private val planner: QwenConversationPlanner = QwenConversationPlanner(llmEngine),
+    private val orchestrator: ConversationalRagOrchestrator = ConversationalRagOrchestrator(planner = planner),
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : AndroidViewModel(application) {
 
@@ -84,6 +94,16 @@ class VoiceDoctorViewModel(
             }
         }
 
+        // Initialize offline medical knowledge pack
+        viewModelScope.launch {
+            medicalPackManager.initialize().onSuccess { hybridRetriever ->
+                orchestrator.setRetriever(hybridRetriever)
+                Log.i(TAG, "Medical knowledge pack initialized successfully")
+            }.onFailure { error ->
+                Log.w(TAG, "Medical pack initialization failed (running in fallback/degraded mode)", error)
+            }
+        }
+
         // Monitor TTS voice availability
         viewModelScope.launch {
             ttsManager.isOfflineVoiceAvailable.collect { available ->
@@ -98,8 +118,11 @@ class VoiceDoctorViewModel(
                 if (installState is ModelInstallState.Installed) {
                     if (!llmEngine.isModelLoaded.value) {
                         Log.i(TAG, "Model installed; loading into llama.cpp engine...")
-                        llmEngine.loadModel(installState.path).onFailure { error ->
-                            Log.e(TAG, "Failed to load llama model", error)
+                        val loadResult = llmEngine.loadModel(installState.path)
+                        loadResult.onSuccess {
+                            Log.i(TAG, "LLM model loaded successfully into llama.cpp")
+                        }.onFailure { error ->
+                            Log.e(TAG, "Failed to load LLM model into llama.cpp", error)
                         }
                     }
                 } else if (installState is ModelInstallState.NotInstalled) {
@@ -110,7 +133,7 @@ class VoiceDoctorViewModel(
             }
         }
 
-        // Monitor history opt-in state
+        // Monitor opt-in history state
         viewModelScope.launch {
             conversationRepository.isHistoryEnabled.collect { enabled ->
                 _uiState.update { it.copy(isHistoryEnabled = enabled) }
@@ -119,20 +142,13 @@ class VoiceDoctorViewModel(
 
         // Monitor saved conversations
         viewModelScope.launch {
-            conversationRepository.getAllConversations().collect { convs ->
-                _uiState.update { it.copy(savedConversations = convs) }
+            conversationRepository.getAllConversations().collect { savedList ->
+                _uiState.update { it.copy(savedConversations = savedList) }
             }
         }
     }
 
-    fun hasRecordAudioPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            getApplication(),
-            android.Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    // --- Model Management Actions ---
+    // --- Model Download Actions ---
 
     fun setModelDownloadDialog(show: Boolean) {
         _uiState.update { it.copy(showModelDownloadDialog = show) }
@@ -148,54 +164,45 @@ class VoiceDoctorViewModel(
 
     fun deleteInstalledModel() {
         viewModelScope.launch {
-            llmEngine.unloadModel()
-            modelRepository.removeInstalledModel()
-            _uiState.update {
-                it.copy(
-                    statusMessage = "AI model removed from device"
-                )
+            if (llmEngine.isModelLoaded.value) {
+                llmEngine.unloadModel()
             }
-            delay(2000)
-            _uiState.update { it.copy(statusMessage = null) }
+            modelRepository.removeInstalledModel()
         }
     }
 
-    // --- History Actions ---
-
-    fun toggleHistoryOptIn(enabled: Boolean) {
-        conversationRepository.setHistoryEnabled(enabled)
-    }
+    // --- Conversation History Actions ---
 
     fun setHistorySheet(show: Boolean) {
         _uiState.update { it.copy(showHistorySheet = show) }
     }
 
+    fun toggleHistoryOptIn(enabled: Boolean) {
+        conversationRepository.setHistoryEnabled(enabled)
+    }
+
     fun loadSavedConversation(conversationId: String) {
         viewModelScope.launch {
             val entities = conversationRepository.getMessagesList(conversationId)
-            if (entities.isNotEmpty()) {
-                currentConversationId = conversationId
-                val loadedMessages = entities.map { entity ->
-                    ChatMessage(
-                        id = entity.id,
-                        sender = if (entity.role == "USER") MessageSender.USER else MessageSender.DOCTOR,
-                        text = entity.content,
-                        time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(entity.createdAt)),
-                        isRead = true,
-                        isVoice = entity.source == "VOICE",
-                        timestamp = entity.createdAt
-                    )
-                }
-                _uiState.update {
-                    it.copy(
-                        messages = loadedMessages,
-                        showHistorySheet = false,
-                        isConversationExpanded = true,
-                        statusMessage = "Loaded saved conversation"
-                    )
-                }
-                delay(1500)
-                _uiState.update { it.copy(statusMessage = null) }
+            val chatMessages = entities.map { entity ->
+                ChatMessage(
+                    id = entity.id,
+                    sender = if (entity.role == "USER") MessageSender.USER else MessageSender.DOCTOR,
+                    text = entity.content,
+                    time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(entity.createdAt)),
+                    isRead = true,
+                    isVoice = entity.source == "VOICE",
+                    timestamp = entity.createdAt
+                )
+            }
+            currentConversationId = conversationId
+            _uiState.update {
+                it.copy(
+                    messages = chatMessages,
+                    showHistorySheet = false,
+                    isConversationExpanded = true,
+                    sessionState = SessionState()
+                )
             }
         }
     }
@@ -209,6 +216,23 @@ class VoiceDoctorViewModel(
     fun clearAllSavedConversations() {
         viewModelScope.launch {
             conversationRepository.clearAllHistory()
+        }
+    }
+
+    // --- Evidence Mode Actions ---
+
+    fun toggleEvidenceMode() {
+        val newMode = !_uiState.value.isEvidenceModeEnabled
+        _uiState.update { state ->
+            state.copy(
+                isEvidenceModeEnabled = newMode,
+                sessionState = state.sessionState.copy(evidenceModeEnabled = newMode),
+                statusMessage = if (newMode) "Evidence Mode ON (MedlinePlus grounded)" else "Evidence Mode OFF (LLM only — not source-grounded)"
+            )
+        }
+        viewModelScope.launch {
+            delay(2000)
+            _uiState.update { it.copy(statusMessage = null) }
         }
     }
 
@@ -424,35 +448,56 @@ class VoiceDoctorViewModel(
         }
 
         activeJob = viewModelScope.launch {
+            val sessionState = _uiState.value.sessionState.copy(
+                evidenceModeEnabled = _uiState.value.isEvidenceModeEnabled
+            )
+
+            var lastValidatedAction: ValidatedAction? = null
+            var lastBundle: EvidenceBundle = EvidenceBundle.EMPTY
+            var finalState: SessionState = sessionState
             val accumulatedText = StringBuilder()
 
-            llmEngine.generate(userPrompt).collect { token ->
-                accumulatedText.append(token)
-                val currentText = accumulatedText.toString()
-
-                _uiState.update { state ->
-                    val updatedMessages = state.messages.map { msg ->
-                        if (msg.id == doctorMsgId) {
-                            msg.copy(text = currentText)
-                        } else {
-                            msg
+            orchestrator.executeTurn(sessionState, userPrompt).collect { update ->
+                when (update) {
+                    is OrchestratorUpdate.Token -> {
+                        accumulatedText.append(update.text)
+                        val currentText = accumulatedText.toString()
+                        _uiState.update { state ->
+                            val updatedMessages = state.messages.map { msg ->
+                                if (msg.id == doctorMsgId) msg.copy(text = currentText) else msg
+                            }
+                            state.copy(messages = updatedMessages)
                         }
                     }
-                    state.copy(messages = updatedMessages)
+                    is OrchestratorUpdate.Complete -> {
+                        lastValidatedAction = update.validatedAction
+                        lastBundle = update.evidenceBundle
+                        finalState = update.updatedState
+                    }
                 }
             }
 
-            val finalText = accumulatedText.toString().trim().ifEmpty {
+            val finalDoctorText = lastValidatedAction?.text ?: accumulatedText.toString().trim().ifEmpty {
                 "I am here to help. Could you please describe your symptoms in more detail?"
             }
+            val citations = lastValidatedAction?.verifiedCitationIds ?: emptyList()
+            val actionType = lastValidatedAction?.type?.name
 
-            // Update doctor message with final text
-            val completedDoctorMsg = initialDoctorMessage.copy(text = finalText)
+            val completedDoctorMsg = initialDoctorMessage.copy(
+                text = finalDoctorText,
+                citations = citations,
+                actionType = actionType
+            )
+
             _uiState.update { state ->
                 val updatedMessages = state.messages.map { msg ->
                     if (msg.id == doctorMsgId) completedDoctorMsg else msg
                 }
-                state.copy(messages = updatedMessages)
+                state.copy(
+                    messages = updatedMessages,
+                    sessionState = finalState,
+                    lastEvidenceBundle = lastBundle
+                )
             }
 
             // Save conversation to Room if history is enabled
@@ -468,7 +513,7 @@ class VoiceDoctorViewModel(
             if (_uiState.value.isSoundEnabled) {
                 _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
                 ttsManager.speak(
-                    text = finalText,
+                    text = finalDoctorText,
                     isSoundEnabled = true,
                     onStart = {
                         _uiState.update { it.copy(uiState = DoctorUiState.Speaking) }
@@ -534,7 +579,7 @@ class VoiceDoctorViewModel(
                 statusMessage = if (language == AppLanguage.TELUGU) {
                     "భాష తెలుగులోకి మార్చబడింది (డెమో మోడ్)"
                 } else {
-                    "Language set to English (Offline LLM)"
+                    "Language set to English (Offline RAG + LLM)"
                 }
             )
         }
@@ -566,6 +611,7 @@ class VoiceDoctorViewModel(
                 isConversationExpanded = false,
                 uiState = DoctorUiState.Idle,
                 inputText = "",
+                sessionState = SessionState(),
                 statusMessage = if (it.currentLanguage == AppLanguage.TELUGU) "సంభాషణ క్లియర్ చేయబడింది" else "Conversation cleared"
             )
         }
@@ -583,7 +629,8 @@ class VoiceDoctorViewModel(
             it.copy(
                 messages = getSeedMessages(it.currentLanguage),
                 isConversationExpanded = false,
-                uiState = DoctorUiState.Idle
+                uiState = DoctorUiState.Idle,
+                sessionState = SessionState()
             )
         }
     }
@@ -682,11 +729,18 @@ class VoiceDoctorViewModel(
                 ),
                 ChatMessage(
                     sender = MessageSender.DOCTOR,
-                    text = "I'm here to help. Can you tell me more about the pain, like its type and intensity?",
+                    text = "I'm here to help. Can you tell me more about the pain, like its location and intensity?",
                     time = "5:16 PM"
                 )
             )
         }
+    }
+
+    fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            getApplication(),
+            android.Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onCleared() {
@@ -694,6 +748,7 @@ class VoiceDoctorViewModel(
         audioRecorder.release()
         sttEngine.release()
         ttsManager.shutdown()
+        medicalPackManager.close()
         viewModelScope.launch {
             llmEngine.unloadModel()
         }

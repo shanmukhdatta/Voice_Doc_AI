@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -136,13 +137,39 @@ fun MessageBubble(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .testTag(if (isUser) "user_message_bubble" else "doctor_message_bubble")
             ) {
-                Text(
-                    text = message.text,
-                    color = if (isUser) UserBubbleText else DoctorBubbleText,
-                    fontSize = 16.sp,
-                    lineHeight = 23.sp,
-                    fontWeight = FontWeight.Normal
-                )
+                Column {
+                    Text(
+                        text = message.text,
+                        color = if (isUser) UserBubbleText else DoctorBubbleText,
+                        fontSize = 16.sp,
+                        lineHeight = 23.sp,
+                        fontWeight = FontWeight.Normal
+                    )
+
+                    if (!isUser && message.citations.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            for (c in message.citations.take(3)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFFE8F5E9))
+                                        .border(0.5.dp, Color(0xFF81C784), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Source: $c",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF2E7D32),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Timestamp and read receipt

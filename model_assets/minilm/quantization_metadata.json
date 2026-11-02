@@ -1,0 +1,11 @@
+{
+  "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+  "onnx_int8_path": "C:\\Users\\lokes\\Datta\\Projects\\VoiceDoc\\tools\\medical_pack\\..\\..\\model_assets\\minilm\\model_quantized.onnx",
+  "onnx_int8_size_bytes": 23455019,
+  "onnx_int8_size_mb": 22.37,
+  "onnx_int8_sha256": "f055c0ac50a50b486bfc05a146725310cb8dd96f0868e48b10c3c1012d4ff6b8",
+  "vector_dimension": 384,
+  "pooling": "masked_mean_pooling",
+  "normalization": "L2",
+  "avg_int8_fp32_similarity": 0.96232
+}

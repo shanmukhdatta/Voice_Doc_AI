@@ -1,0 +1,13 @@
+{
+  "dataset_name": "MedlinePlus Health Topics Official XML Release",
+  "official_entry_url": "https://medlineplus.gov/xml.html",
+  "source_download_url": "https://medlineplus.gov/xml/mplus_topics_2026-10-31.xml",
+  "release_date": "2026-10-31",
+  "license": "Public Domain (17 U.S.C. \u00a7 105 - Works of the United States Government)",
+  "publisher": "National Library of Medicine (NLM), U.S. Department of Health and Human Services",
+  "attribution_requirement": "MedlinePlus, National Library of Medicine, U.S. Department of Health and Human Services",
+  "file_name": "mplus_topics_2026-10-31.xml",
+  "file_size_bytes": 30127898,
+  "sha256": "261f04c1c07fc6cbf75450a90840f3d5221a761c9f66867a41672d20fd7e1572",
+  "review_status": "source_verified_clinical_review_pending"
+}

@@ -1,0 +1,9 @@
+{
+  "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+  "onnx_fp32_path": "C:\\Users\\lokes\\Datta\\Projects\\VoiceDoc\\tools\\medical_pack\\..\\..\\model_assets\\minilm\\model_fp32.onnx",
+  "onnx_fp32_size_bytes": 712133,
+  "onnx_fp32_sha256": "5a30356e7218f39976b2ab4897574fc22f1277a0e14bc6ef12e0481c9770e6b5",
+  "embedding_dimension": 384,
+  "max_sequence_length": 256,
+  "vocab_size": 30522
+}

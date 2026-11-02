@@ -16,3 +16,11 @@
 local.properties
 .env
 debug.keystore
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Intermediate unquantized ONNX models
+model_assets/minilm/model_fp32*
+*.onnx.data
